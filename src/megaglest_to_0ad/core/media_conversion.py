@@ -377,7 +377,7 @@ def convert_faction_media(
         # stone.g3d) must not clobber each other: dedupe the output stem and
         # record the mapping so the Phase 4 actor generator references the
         # exact DAEs written for each source model. The dedup avoids the
-        # whole ``{stem}_N`` family so it can't collide with multi-mesh
+        # whole ``{stem}_NN`` family so it can't collide with multi-mesh
         # split names either.
         is_base = g3d_path in base_g3ds
         is_cons = g3d_path.stem.endswith("_cons")
@@ -398,7 +398,7 @@ def convert_faction_media(
         counter = 0
         while _mesh_names(mesh_stem, n_outputs) & written_mesh_names:
             counter += 1
-            mesh_stem = f"{g3d_path.stem}_{counter}"
+            mesh_stem = f"{g3d_path.stem}_{counter:02d}"
         # Base models of animated units get a synthesized rig; the DAE then
         # carries merged per-texture geometry + skin + armature. Other
         # models stay static base-pose DAEs. Rig construction (k-means
@@ -674,7 +674,7 @@ def _mesh_names(stem: str, n_meshes: int) -> set[str]:
     """Output filenames (``.dae``) a model with ``stem`` will produce."""
     if n_meshes <= 1:
         return {f"{stem}.dae"}
-    return {f"{stem}_{i}.dae" for i in range(n_meshes)}
+    return {f"{stem}_{i + 1:02d}.dae" for i in range(n_meshes)}
 
 
 def _convert_portraits(

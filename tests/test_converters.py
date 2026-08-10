@@ -131,9 +131,9 @@ def test_dryad_idle_multi_mesh_static_only(tmp_path: Path) -> None:
     assert result.triangle_count == 1026  # 900 + 1722 + 456 indices / 3
     assert len(result.mesh_daes) == 3
     assert [p.stem for p in result.mesh_daes] == [
-        "dryad_idle_0",
-        "dryad_idle_1",
-        "dryad_idle_2",
+        "dryad_idle_01",
+        "dryad_idle_02",
+        "dryad_idle_03",
     ]
     for path in result.mesh_daes:
         assert path.exists()
@@ -356,13 +356,13 @@ def test_mesh_stem_collision_deduped(tmp_path: Path) -> None:
     meshes_dir = mod / "art/meshes" / "elves"
     assert sorted(p.name for p in meshes_dir.glob("*.dae")) == [
         "stone.dae",
-        "stone_1.dae",
-        "stone_2.dae",
+        "stone_01.dae",
+        "stone_02.dae",
     ]
     # registry maps each source model to its own written DAEs
     assert stats.models[one].mesh_daes == [meshes_dir / "stone.dae"]
-    assert stats.models[two].mesh_daes == [meshes_dir / "stone_1.dae"]
-    assert stats.models[three].mesh_daes == [meshes_dir / "stone_2.dae"]
+    assert stats.models[two].mesh_daes == [meshes_dir / "stone_01.dae"]
+    assert stats.models[three].mesh_daes == [meshes_dir / "stone_02.dae"]
     assert stats.meshes == 3
     # no animation DAEs are emitted for game output
     assert not any(path.endswith("animation") for path in stats.generated)

@@ -309,14 +309,14 @@ class MeshConverter:
             mesh_groups = groups if groups is not None else [[i] for i in range(len(model.meshes))]
             multi = len(mesh_groups) > 1
             for group_index, mesh_indices in enumerate(mesh_groups):
-                name = f"{stem}_{group_index}" if multi else stem
+                name = _mesh_variant_name(stem, group_index, multi)
                 mesh_dae = output_dir / f"{name}.dae"
                 self._write_static_dae(model, group_index, mesh_indices, mesh_dae, base, civ)
                 mesh_daes.append(mesh_dae)
         else:
             multi = output_count(model, rig) > 1
             for group_index, group in enumerate(rig.groups):
-                name = f"{stem}_{group_index}" if multi else stem
+                name = _mesh_variant_name(stem, group_index, multi)
                 mesh_dae = output_dir / f"{name}.dae"
                 self._write_skinned_dae(model, group_index, mesh_dae, base, civ, rig)
                 mesh_daes.append(mesh_dae)
@@ -934,6 +934,17 @@ def _add_animations(
         channel.set("source", f"#{gid}-{bone}-sampler")
         channel.set("target", f"{bone}/transform")
 
+def _mesh_variant_name(stem: str, index: int, multi: bool) -> str:
+    """Output basename for one mesh of a model.
+
+    Numbered variants use zero-padded two-digit suffixes (``_01``, ``_02``),
+    never bare ``_1``: the project's mesh-naming rule. Single-mesh models
+    keep the bare stem.
+    """
+    if not multi:
+        return stem
+    return f"{stem}_{index + 1:02d}"
+
 
 # -- geometry helpers -------------------------------------------------------
 
@@ -942,6 +953,8 @@ def _frame_positions(mesh: g3dlib.Mesh, frame: int) -> list[float]:
     """Positions of one frame: vc x 3 floats."""
     stride = mesh.vertex_count * 3
     return mesh.vertices[frame * stride : (frame + 1) * stride]
+
+
 def _model_footprint(model: g3dlib.G3DModel) -> tuple[float, float, float]:
     """(width, depth, height) of the frame-0 bounding box, in model units.
 

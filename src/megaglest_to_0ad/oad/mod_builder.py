@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -74,8 +75,15 @@ def default_metadata(
 
 
 def build_mod_skeleton(output_root: Path, name: str) -> Path:
-    """Create the mod directory and standard subdirectories."""
+    """Create the mod directory and standard subdirectories.
+
+    A previous build of the same mod is removed first: conversion output is
+    deterministic, and stale files (e.g. older mesh names) would otherwise
+    accumulate in the live mod and the packaged pyromod.
+    """
     mod_dir = output_root / name
+    if mod_dir.exists():
+        shutil.rmtree(mod_dir)
     for rel in MOD_SUBDIRS:
         (mod_dir / rel).mkdir(parents=True, exist_ok=True)
     return mod_dir

@@ -463,9 +463,9 @@ importer contract overrides the literal layout above in these cases:
   (Name_array/bind/weights consistency, normalization) and animation DAEs
   (sampler sources, LINEAR-only interpolation, channel targets that resolve
   to JOINT/NODE nodes in the scene).
-- **Mesh basename collisions dedupe with `_N`** (e.g. `stone.g3d` exists 3×
-  with different content in the pack → `stone.dae`, `stone_1.dae`,
-  `stone_2.dae`), and the `ConvertedMesh` registry maps each source g3d to
+- **Mesh basename collisions dedupe with `_01`** (e.g. `stone.g3d` exists 3×
+  with different content in the pack → `stone.dae`, `stone_01.dae`,
+  `stone_02.dae`), and the `ConvertedMesh` registry maps each source g3d to
   its exact output DAEs so actors can reference the right file.
 - **Same-content textures from different source dirs produce ONE output**
   (content-hash dedup): packs copy one art file into many unit dirs; the
