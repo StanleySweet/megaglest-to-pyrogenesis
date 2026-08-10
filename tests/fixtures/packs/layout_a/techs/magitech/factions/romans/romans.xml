@@ -1,0 +1,9 @@
+<?xml version="1.0" standalone="no"?>
+<faction>
+	<starting-resources>
+		<resource name="gold" amount="300"/>
+	</starting-resources>
+	<starting-units>
+		<unit name="legion" amount="1"/>
+	</starting-units>
+</faction>

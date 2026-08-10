@@ -1,0 +1,24 @@
+<?xml version="1.0" standalone="no"?>
+<unit>
+	<parameters>
+		<size value="1"/>
+		<height value="2"/>
+		<max-hp value="100"/>
+		<armor value="0"/>
+		<image path="images/ghost.bmp"/>
+		<selection-sounds enabled="false"/>
+		<command-sounds enabled="false"/>
+	</parameters>
+	<skills>
+		<skill>
+			<type value="move"/>
+			<name value="move_skill"/>
+			<speed value="200"/>
+			<animation path="models/missing.g3d"/>
+			<sound enabled="true">
+				<sound-file path="sounds/woosh.wav"/>
+			</sound>
+		</skill>
+	</skills>
+	<commands/>
+</unit>

@@ -1,0 +1,10 @@
+<?xml version="1.0" standalone="no"?>
+<tech-tree>
+	<description value="classic fixture tech tree"/>
+	<attack-types>
+		<attack-type name="slashing"/>
+	</attack-types>
+	<armor-types>
+		<armor-type name="metal"/>
+	</armor-types>
+</tech-tree>

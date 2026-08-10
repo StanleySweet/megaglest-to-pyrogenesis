@@ -1,0 +1,6 @@
+<?xml version="1.0" standalone="no"?>
+<faction>
+	<starting-units>
+		<unit name="ghost" amount="1"/>
+	</starting-units>
+</faction>

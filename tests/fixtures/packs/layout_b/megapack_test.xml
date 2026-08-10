@@ -1,0 +1,16 @@
+<?xml version="1.0" standalone="no"?>
+<tech-tree>
+	<description value="fixture tech tree"/>
+	<attack-types>
+		<attack-type name="slashing"/>
+		<attack-type name="piercing"/>
+	</attack-types>
+	<armor-types>
+		<armor-type name="organic"/>
+		<armor-type name="leather"/>
+	</armor-types>
+	<damage-multipliers>
+		<damage-multiplier attack="piercing" armor="leather" value="1.25"/>
+		<damage-multiplier attack="piercing" armor="organic" value="1.0"/>
+	</damage-multipliers>
+</tech-tree>

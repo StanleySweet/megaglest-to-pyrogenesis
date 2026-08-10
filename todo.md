@@ -3,7 +3,7 @@
 - All actors should use a placeholder norm and spec texture.
 - Output folder seems outdated, and should be ignored removed if useless
 - Use pycollada if we don't use it and other libraries to reduce boilerplate.
-- Some of the anims are distorted, To check for consistency one should compare vertex positions frame by frame to make sure.
+- [x] Some of the anims are distorted, To check for consistency one should compare vertex positions frame by frame to make sure.
 - More files/folders should be ignored
 - The original input/megaglest-data/ has a different layout that does not work
 
