@@ -5,16 +5,13 @@
 - Use pycollada if we don't use it and other libraries to reduce boilerplate.
 - Some of the anims are distorted, To check for consistency one should compare vertex positions frame by frame to make sure.
 - More files/folders should be ignored
-
-- Scan art/actors/*.xml.
-- Find actors using 4 spec materials.
+- The original input/megaglest-data/ has a different layout that does not work
 
 - Rename materials:
     basic_spec → no_trans_spec
     blend_spec → basic_trans_spec
     objectcolor_spec → objectcolor_specmap
     playercolor_spec → player_trans_spec
-- Scan art/terrains/*.xml and art/actors/*.xml.
 - Upgrade materials to _norm_spec variants.
 - Add missing normTex → default_norm.png.
 - Add missing specTex → null_black.dds.
