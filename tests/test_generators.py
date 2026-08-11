@@ -380,6 +380,8 @@ def test_template_building_components(tmp_path: Path) -> None:
         commands=[
             CommandDef(type="produce", name="train", produced_unit="elf"),
             CommandDef(type="upgrade", name="weaponry"),
+            # display name differs from the canonical upgrade id
+            CommandDef(type="upgrade", name="gather_wisdom", produced_upgrade="wisdom"),
         ],
     )
     faction = _faction_with(tmp_path, {"barracks": barracks})
@@ -393,9 +395,9 @@ def test_template_building_components(tmp_path: Path) -> None:
     obstruction = root.find("Obstruction/Static")
     assert obstruction.get("width") == "16.0"
     assert root.find("Obstruction/Active").text == "true"
-    assert root.find("Obstruction/BlockMovement").text == "true"
+    # <produced-upgrade> wins over the display <name>
+    assert root.find("Researcher/Technologies").text == "elves/weaponry\nelves/wisdom"
     assert root.find("Trainer/Entities").text == "units/elves/elf"
-    assert root.find("Researcher/Technologies").text == "elves/weaponry"
     assert root.find("VisualActor/Actor").text == "structures/elves/barracks.xml"
     assert root.find("VisualActor/SilhouetteDisplay").text == "true"
 def test_template_footprint_from_model_bbox(tmp_path: Path) -> None:

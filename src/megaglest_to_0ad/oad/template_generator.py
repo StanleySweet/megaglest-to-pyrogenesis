@@ -300,7 +300,16 @@ def _add_trainer(root: etree._Element, civ: str, unit: UnitDef) -> None:
 
 
 def _add_researcher(root: etree._Element, civ: str, unit: UnitDef) -> None:
-    upgrades = sorted({cmd.name for cmd in unit.commands if cmd.type == "upgrade" and cmd.name})
+    # <name> is the display label; <produced-upgrade> is the canonical
+    # upgrade id matching faction.upgrades keys (they differ, e.g. forge's
+    # "noldor_armour" -> noldor_armour_crafting). Fall back for old packs.
+    upgrades = sorted(
+        {
+            cmd.produced_upgrade or cmd.name
+            for cmd in unit.commands
+            if cmd.type == "upgrade" and (cmd.produced_upgrade or cmd.name)
+        }
+    )
     if not upgrades:
         return
     researcher = etree.SubElement(root, "Researcher")

@@ -67,6 +67,7 @@ class CommandDef:
     image: Path | None = None
     skill_refs: dict[str, str] = field(default_factory=dict)
     produced_unit: str | None = None
+    produced_upgrade: str | None = None
     morph_unit: str | None = None
     discount: float = 0.0
     requirements: list[str] = field(default_factory=list)
@@ -549,6 +550,8 @@ def _parse_commands(node: XmlNode, base: Path, macros: dict[str, Path]) -> list[
                     command.image = resolve_pack_path(base, ref, macros)
             elif tag == "produced-unit":
                 command.produced_unit = sub.name_attr()
+            elif tag == "produced-upgrade":
+                command.produced_upgrade = sub.name_attr()
             elif tag == "morph-unit":
                 command.morph_unit = sub.name_attr()
             elif tag == "discount":

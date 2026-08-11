@@ -26,3 +26,5 @@
 - [x] numbers should be _01 and not _1 etc this is not a new rule, but if it is should be enforced.
 - [x] techs are missing.
 - [x] validate --meshes was unusably slow (quadratic skin-weight parsing); fixed, 225/225 DAEs importable in seconds
+
+- [x] Researcher <Technologies> referenced display names, not canonical upgrade ids (forge noldor_armour -> noldor_armour_crafting, wood_hall train_and_equip_dryads -> dryad_weaponry, lore_house gather_wisdom -> wisdom); parse <produced-upgrade> and use it, 0 broken tech refs
