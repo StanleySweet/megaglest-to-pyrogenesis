@@ -375,6 +375,7 @@ def _skin_checks(controller: etree._Element, root: etree._Element, vertex_count:
     )
     weight_source = ids.get(weights_sid)
     n_weights = _source_floats(weight_source) if weight_source is not None else 0
+    weight_values = _source_float_list(weight_source)
     cursor = 0
     per_vertex: list[list[float]] = []
     for c in counts:
@@ -384,7 +385,7 @@ def _skin_checks(controller: etree._Element, root: etree._Element, vertex_count:
                 weight_index = values[cursor + 1]
                 per_vertex[-1].append(0.0)
                 if 0 <= weight_index < n_weights:
-                    per_vertex[-1][-1] = _weight_at(weight_source, weight_index)
+                    per_vertex[-1][-1] = weight_values[weight_index]
                 else:
                     failures.append(f"weight index {weight_index} out of range")
             cursor += 2
@@ -394,12 +395,14 @@ def _skin_checks(controller: etree._Element, root: etree._Element, vertex_count:
     return failures
 
 
-def _weight_at(source: etree._Element, index: int) -> float:
+def _source_float_list(source: etree._Element | None) -> list[float]:
+    """Floats of a <source>'s float_array, parsed once ([] if missing)."""
+    if source is None:
+        return []
     array = source.find(_tag("float_array"))
     if array is None or not array.text:
-        return 0.0
-    values = [float(v) for v in array.text.split()]
-    return values[index] if index < len(values) else 0.0
+        return []
+    return [float(v) for v in array.text.split()]
 
 
 def _geometry_vertex_count(geometry: etree._Element) -> int:

@@ -11,10 +11,24 @@ from lxml import etree
 from megaglest_to_0ad.converters.mesh_converter import MeshConverter, read_g3d, texture_groups
 from megaglest_to_0ad.converters.rig import build_rig
 from megaglest_to_0ad.oad.dae_validator import (
+    _source_float_list,
     validate_animation_dae,
     validate_mesh_dae,
     validate_mod_meshes,
 )
+
+
+def test_source_float_list_parses_once() -> None:
+    """Weight arrays are parsed a single time (per-reference re-parsing made
+    skin validation quadratic on vertex x weight counts)."""
+    dae = etree.Element(f"{{{NS['c']}}}root")
+    source = etree.SubElement(dae, f"{{{NS['c']}}}source")
+    array = etree.SubElement(source, f"{{{NS['c']}}}float_array")
+    array.text = "0.25 0.5 0.25 1.0"
+    assert _source_float_list(source) == [0.25, 0.5, 0.25, 1.0]
+    assert _source_float_list(None) == []
+    empty = etree.SubElement(dae, f"{{{NS['c']}}}source2")
+    assert _source_float_list(empty) == []
 
 G3D_FIXTURES = Path(__file__).parent / "fixtures" / "g3d"
 NS = {"c": "http://www.collada.org/2005/11/COLLADASchema"}
