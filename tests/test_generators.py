@@ -465,6 +465,39 @@ def test_template_builder_component(tmp_path: Path) -> None:
 
     archer_root = etree.parse(tmp_path / "simulation/templates/units/elves/archer.xml").getroot()
     assert archer_root.find("Builder") is None
+
+def test_template_gatherer_component(tmp_path: Path) -> None:
+    """A harvest-skill unit gets a ResourceGatherer (template_unit_support,
+    the worker's fallback parent, carries none); units without the skill
+    get nothing."""
+    worker = _unit(
+        "elf",
+        skills={"harvest": SkillDef(type="harvest", name="harvest")},
+    )
+    archer = _unit("archer", skills={"attack": SkillDef(type="attack", name="attack")})
+    faction = _faction_with(tmp_path, {"elf": worker, "archer": archer})
+    generate_templates(faction, tmp_path, MediaConversionStats(), Settings())
+
+    elf = etree.parse(tmp_path / "simulation/templates/units/elves/elf.xml").getroot()
+    gatherer = elf.find("ResourceGatherer")
+    assert gatherer is not None
+    assert gatherer.find("MaxDistance").text == "2.0"
+    assert gatherer.find("BaseSpeed").text == "1.0"
+    rates = gatherer.find("Rates")
+    # every subtype the public worker can gather, incl. ruins
+    assert rates.find("food.fruit").text == "0.5"
+    assert rates.find("wood.tree").text == "0.75"
+    assert rates.find("metal.ruins").text == "2"
+    assert rates.find("food.fish") is None  # needs a fishing ship
+    capacities = gatherer.find("Capacities")
+    assert capacities.find("food").text == "10"
+    assert capacities.find("metal").text == "10"
+    # component lands in engine registration order
+    tags = [el.tag for el in elf]
+    assert tags == sorted(tags)
+
+    archer_root = etree.parse(tmp_path / "simulation/templates/units/elves/archer.xml").getroot()
+    assert archer_root.find("ResourceGatherer") is None
 def test_template_footprint_from_model_bbox(tmp_path: Path) -> None:
     """Footprint/Obstruction derive from the base model's measured bbox."""
     g3d = G3D_FIXTURES / "gold.g3d"

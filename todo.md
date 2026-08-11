@@ -34,3 +34,5 @@
 - [x] Foundation actors skipped the earliest construction stage (heavydamage -> cons_02 for 5-stage academy, cons_01 never shown; a placed foundation looked 20% built because Foundation.js starts hitpoints at 1 and the placement selection is heavydamage). Map heavydamage to stage 0.
 
 - [x] Workers could not build anything: _add_builder was a guard-only stub, so no template had a <Builder> component and the engine never offered the construct command. Emit Builder/Rate 1.0 + Entities listing every faction structure (the pack's build-skill speed has no 0 A.D. rate equivalent; build times stay in Cost/BuildTime).
+
+- [x] Workers could not gather: no template had a <ResourceGatherer> and the worker's fallback parent template_unit_support carries none, so every harvest skill was dead. Emit ResourceGatherer with public per-subtype rates (missing rate = ungatherable) + 10-unit carries for units with a harvest skill; inserted in engine registration order.

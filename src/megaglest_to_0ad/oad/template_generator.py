@@ -103,6 +103,7 @@ def _build_template(
         _add_identity(root, civ, unit)
         _add_promotion(root, civ, unit)
         _add_resistance(root, unit)
+        _add_gatherer(root, unit)
         _add_motion(root, unit)
         _add_vision(root, unit)
         _add_sound(root, civ, unit)
@@ -291,6 +292,42 @@ def _add_builder(
     etree.SubElement(builder, "Rate").text = "1.0"
     entities = etree.SubElement(builder, "Entities", datatype="tokens")
     entities.text = "\n".join(f"structures/{civ}/{name}" for name in buildable)
+
+def _add_gatherer(root: etree._Element, unit: UnitDef) -> None:
+    """ResourceGatherer for units with a harvest skill.
+
+    The fallback parent for workers (template_unit_support) carries no
+    ResourceGatherer, so a harvest-skill unit would gather nothing. MG
+    harvest is one generic skill covering all resources; give it the
+    public per-subtype rates (a missing rate is ungatherable) and the
+    standard 10-unit carries. Inserted alphabetically like Sound: the
+    engine sequences optional component refs in registration order.
+    """
+    if not any(skill.type == "harvest" for skill in unit.skills.values()):
+        return
+    insert_at = next(
+        (i for i, el in enumerate(root) if el.tag > "ResourceGatherer"), len(root)
+    )
+    gatherer = etree.Element("ResourceGatherer")
+    etree.SubElement(gatherer, "MaxDistance").text = "2.0"
+    etree.SubElement(gatherer, "BaseSpeed").text = "1.0"
+    rates = etree.SubElement(gatherer, "Rates")
+    for resource, value in (
+        ("food.fruit", "0.5"),
+        ("food.grain", "0.25"),
+        ("food.meat", "1"),
+        ("wood.tree", "0.75"),
+        ("wood.ruins", "5"),
+        ("stone.rock", "0.5"),
+        ("stone.ruins", "2"),
+        ("metal.ore", "0.5"),
+        ("metal.ruins", "2"),
+    ):
+        etree.SubElement(rates, resource).text = value
+    capacities = etree.SubElement(gatherer, "Capacities")
+    for resource, value in (("food", "10"), ("wood", "10"), ("stone", "10"), ("metal", "10")):
+        etree.SubElement(capacities, resource).text = value
+    root.insert(insert_at, gatherer)
 
 def _add_promotion(root: etree._Element, civ: str, unit: UnitDef) -> None:
     """Promotion for every unit.
