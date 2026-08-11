@@ -28,3 +28,5 @@
 - [x] validate --meshes was unusably slow (quadratic skin-weight parsing); fixed, 225/225 DAEs importable in seconds
 
 - [x] Researcher <Technologies> referenced display names, not canonical upgrade ids (forge noldor_armour -> noldor_armour_crafting, wood_hall train_and_equip_dryads -> dryad_weaponry, lore_house gather_wisdom -> wisdom); parse <produced-upgrade> and use it, 0 broken tech refs
+
+- [x] Units were silent: the converter wrote SoundGroup XMLs (audio/groups/*.xml) but no template referenced them. Wire <Sound><SoundGroups> per unit: selection-sounds -> select, skill sounds -> the engine animation names the actor wires (die -> death, harvest -> gather_*, attack -> attack_melee/ranged, move -> walk/run); 63 keys wired, 0 missing files

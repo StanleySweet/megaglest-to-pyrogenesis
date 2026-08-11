@@ -14,7 +14,7 @@ from pathlib import Path
 from lxml import etree
 
 from ..core.config import Settings
-from ..core.media_conversion import MediaConversionStats
+from ..core.media_conversion import MediaConversionStats, engine_animation_names
 from ..megaglest.civ_loader import Faction, UnitDef
 from .actor_generator import _unit_models
 from .common import (
@@ -87,6 +87,7 @@ def _build_template(
         _add_obstruction(root, unit, stats)
         _add_researcher(root, civ, unit)
         _add_trainer(root, civ, unit)
+        _add_sound(root, civ, unit)
     else:
         # The engine's generated entity grammar sequences its optional
         # component refs in registration (alphabetical) order, so components
@@ -101,6 +102,7 @@ def _build_template(
         _add_resistance(root, unit)
         _add_motion(root, unit)
         _add_vision(root, unit)
+        _add_sound(root, civ, unit)
     _add_visual_actor(root, civ, unit, stats)
     return root
 
@@ -315,6 +317,35 @@ def _add_researcher(root: etree._Element, civ: str, unit: UnitDef) -> None:
     researcher = etree.SubElement(root, "Researcher")
     techs = etree.SubElement(researcher, "Technologies", datatype="tokens")
     techs.text = "\n".join(f"{civ}/{sanitize_mod_name(name)}" for name in upgrades)
+
+
+def _add_sound(root: etree._Element, civ: str, unit: UnitDef) -> None:
+    """Wire the converted SoundGroup files (``audio/groups/{unit}_{set}.xml``)
+    to the engine's query keys. ``selection-sounds`` feed ``select``; each
+    skill feeds the engine animation name(s) the actor wires for it (die ->
+    death, harvest -> gather_*, attack -> attack_melee/attack_ranged, ...);
+    command sounds have no engine query and stay unwired.
+    """
+    groups: dict[str, str] = {}
+    if unit.selection_sounds:
+        groups["select"] = f"groups/{sanitize_mod_name(unit.name)}_select.xml"
+    for skill in unit.skills.values():
+        sounds = list(skill.sounds)
+        if skill.attack is not None:
+            sounds.extend(skill.attack.sounds)
+        if not sounds:
+            continue
+        group_file = f"groups/{sanitize_mod_name(unit.name)}_{skill.type}.xml"
+        for anim_name in engine_animation_names(skill):
+            groups.setdefault(anim_name, group_file)
+    if not groups:
+        return
+    sound = etree.Element("Sound")
+    sound_groups = etree.SubElement(sound, "SoundGroups")
+    for key in sorted(groups):
+        etree.SubElement(sound_groups, key).text = groups[key]
+    # components are emitted alphabetically (engine registration order)
+    root.insert(next((i for i, el in enumerate(root) if el.tag > "Sound"), len(root)), sound)
 
 
 def _add_visual_actor(

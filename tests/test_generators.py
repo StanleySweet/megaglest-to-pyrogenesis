@@ -400,6 +400,44 @@ def test_template_building_components(tmp_path: Path) -> None:
     assert root.find("Trainer/Entities").text == "units/elves/elf"
     assert root.find("VisualActor/Actor").text == "structures/elves/barracks.xml"
     assert root.find("VisualActor/SilhouetteDisplay").text == "true"
+
+
+def test_template_sound_component(tmp_path: Path) -> None:
+    """SoundGroup files are wired to the engine's query keys, not to
+    MegaGlest skill names: select from selection-sounds, engine animation
+    names (gather_*, death, attack_melee) from skill sounds."""
+    elf = _unit(
+        "elf",
+        skills={
+            "harvest": SkillDef(
+                type="harvest",
+                name="harvest",
+                sounds=[Path("worker_mining1.wav"), Path("worker_mining2.wav")],
+            ),
+            "die": SkillDef(type="die", name="die", sounds=[Path("worker_die1.wav")]),
+            "attack": SkillDef(
+                type="attack",
+                name="attack",
+                sounds=[Path("archer_attack1.wav")],
+                attack=AttackStats(range=1.0),
+            ),
+        },
+    )
+    elf.selection_sounds = [Path("worker_select1.wav")]
+    faction = _faction_with(tmp_path, {"elf": elf})
+    generate_templates(faction, tmp_path, MediaConversionStats(), Settings())
+    root = etree.parse(tmp_path / "simulation/templates/units/elves/elf.xml").getroot()
+
+    groups = root.find("Sound/SoundGroups")
+    assert groups.find("select").text == "groups/elf_select.xml"
+    assert groups.find("death").text == "groups/elf_die.xml"
+    assert groups.find("gather_food").text == "groups/elf_harvest.xml"
+    assert groups.find("gather_wood").text == "groups/elf_harvest.xml"
+    assert groups.find("attack_melee").text == "groups/elf_attack.xml"
+    assert groups.find("attack_ranged") is None  # melee per AttackStats(range=1)
+    # components stay in engine registration (alphabetical) order
+    tags = [el.tag for el in root]
+    assert tags == sorted(tags)
 def test_template_footprint_from_model_bbox(tmp_path: Path) -> None:
     """Footprint/Obstruction derive from the base model's measured bbox."""
     g3d = G3D_FIXTURES / "gold.g3d"
