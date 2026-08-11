@@ -4,8 +4,25 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from megaglest_to_0ad.megaglest.civ_loader import load_faction
+from megaglest_to_0ad.megaglest.civ_loader import (
+    CommandDef,
+    SkillDef,
+    UnitDef,
+    _classify_building,
+    load_faction,
+)
 from megaglest_to_0ad.megaglest.parser import discover_pack
+
+
+def _minimal_unit(name: str, skills=None, commands=None, parameters=None) -> UnitDef:
+    return UnitDef(
+        name=name,
+        directory=Path(f"/packs/{name}"),
+        xml_path=Path(f"/packs/{name}/{name}.xml"),
+        parameters=parameters or {},
+        skills=skills or {},
+        commands=commands or [],
+    )
 
 
 def _load_elves(layout_b_pack: Path):
@@ -50,6 +67,37 @@ def test_building_classification(layout_b_pack: Path) -> None:
     assert barracks.is_building is True
     assert barracks.parameters["ai_build_size"] == 6
     assert barracks.parameters["properties"] == ["burnable"]
+
+
+def test_mobile_producer_classified_as_unit() -> None:
+    """MG summons are produce skills on field units (minstrel summons
+    dryads/ents); a moving producer must not become a building."""
+    summoner = _minimal_unit(
+        "minstrel",
+        skills={
+            "move": SkillDef(type="move", name="move"),
+            "produce": SkillDef(type="produce", name="summon_skill"),
+        },
+        commands=[CommandDef(type="produce", name="summon", produced_unit="dryad")],
+    )
+    assert _classify_building(summoner) is False
+
+    # static producer with no move skill stays a building
+    barracks = _minimal_unit(
+        "barracks",
+        skills={"produce": SkillDef(type="produce", name="produce_skill")},
+        commands=[CommandDef(type="produce", name="train", produced_unit="elf")],
+    )
+    assert _classify_building(barracks) is True
+
+    # structure markers beat mobility (MG forest_guardian is built by the
+    # AI and burns despite having move/attack skills)
+    guardian = _minimal_unit(
+        "forest_guardian",
+        skills={"move": SkillDef(type="move", name="move")},
+        parameters={"ai_build_size": 5, "properties": ["burnable"]},
+    )
+    assert _classify_building(guardian) is True
 
 
 def test_skill_parsing_and_macros(layout_b_pack: Path) -> None:

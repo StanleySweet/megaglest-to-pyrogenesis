@@ -572,6 +572,10 @@ def _classify_building(unit: UnitDef) -> bool:
     params = unit.parameters
     if params.get("ai_build_size"):
         return True
+    if any(skill.type == "move" for skill in unit.skills.values()):
+        # Mobile producers (MG minstrel summons dryads/ents) are field
+        # units, not buildings: MG buildings never move.
+        return False
     if "burnable" in (params.get("properties") or []):
         return True
     if any(skill.type in {"produce", "be_built"} for skill in unit.skills.values()):

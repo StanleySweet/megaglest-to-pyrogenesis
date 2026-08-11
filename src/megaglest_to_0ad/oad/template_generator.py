@@ -104,6 +104,9 @@ def _build_template(
         _add_promotion(root, civ, unit)
         _add_resistance(root, unit)
         _add_gatherer(root, unit)
+        # Mobile summoners (MG minstrel) produce units too; Trainer is
+        # entity-generic in the engine, so a unit can keep its summons.
+        _add_trainer(root, civ, unit)
         _add_motion(root, unit)
         _add_vision(root, unit)
         _add_sound(root, civ, unit)
@@ -352,9 +355,11 @@ def _add_trainer(root: etree._Element, civ: str, unit: UnitDef) -> None:
     produced = sorted({cmd.produced_unit for cmd in unit.commands if cmd.produced_unit})
     if not produced:
         return
-    trainer = etree.SubElement(root, "Trainer")
+    insert_at = next((i for i, el in enumerate(root) if el.tag > "Trainer"), len(root))
+    trainer = etree.Element("Trainer")
     entities = etree.SubElement(trainer, "Entities", datatype="tokens")
     entities.text = "\n".join(f"units/{civ}/{name}" for name in produced)
+    root.insert(insert_at, trainer)
 
 
 def _add_researcher(root: etree._Element, civ: str, unit: UnitDef) -> None:

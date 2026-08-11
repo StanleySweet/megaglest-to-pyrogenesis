@@ -498,6 +498,31 @@ def test_template_gatherer_component(tmp_path: Path) -> None:
 
     archer_root = etree.parse(tmp_path / "simulation/templates/units/elves/archer.xml").getroot()
     assert archer_root.find("ResourceGatherer") is None
+
+def test_unit_summoner_keeps_trainer(tmp_path: Path) -> None:
+    """A mobile summoner (MG minstrel) is a unit - template under units/ -
+    but keeps its Trainer so its summons stay trainable; the component is
+    entity-generic in the engine."""
+    minstrel = _unit(
+        "minstrel",
+        skills={
+            "move": SkillDef(type="move", name="move", speed=150),
+            "produce": SkillDef(type="produce", name="summon_skill"),
+        },
+        commands=[CommandDef(type="produce", name="summon", produced_unit="dryad")],
+    )
+    faction = _faction_with(tmp_path, {"minstrel": minstrel})
+    generate_templates(faction, tmp_path, MediaConversionStats(), Settings())
+
+    path = tmp_path / "simulation/templates/units/elves/minstrel.xml"
+    assert path.is_file()
+    assert not (tmp_path / "simulation/templates/structures/elves/minstrel.xml").exists()
+    root = etree.parse(path).getroot()
+    trainer = root.find("Trainer")
+    assert trainer is not None
+    assert trainer.find("Entities").text == "units/elves/dryad"
+    tags = [el.tag for el in root]
+    assert tags == sorted(tags)
 def test_template_footprint_from_model_bbox(tmp_path: Path) -> None:
     """Footprint/Obstruction derive from the base model's measured bbox."""
     g3d = G3D_FIXTURES / "gold.g3d"
