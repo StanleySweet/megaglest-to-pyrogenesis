@@ -30,3 +30,5 @@
 - [x] Researcher <Technologies> referenced display names, not canonical upgrade ids (forge noldor_armour -> noldor_armour_crafting, wood_hall train_and_equip_dryads -> dryad_weaponry, lore_house gather_wisdom -> wisdom); parse <produced-upgrade> and use it, 0 broken tech refs
 
 - [x] Units were silent: the converter wrote SoundGroup XMLs (audio/groups/*.xml) but no template referenced them. Wire <Sound><SoundGroups> per unit: selection-sounds -> select, skill sounds -> the engine animation names the actor wires (die -> death, harvest -> gather_*, attack -> attack_melee/ranged, move -> walk/run); 63 keys wired, 0 missing files
+
+- [x] Foundation actors skipped the earliest construction stage (heavydamage -> cons_02 for 5-stage academy, cons_01 never shown; a placed foundation looked 20% built because Foundation.js starts hitpoints at 1 and the placement selection is heavydamage). Map heavydamage to stage 0.

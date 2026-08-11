@@ -702,6 +702,49 @@ def test_foundation_actor_single_stage_clamps_all_to_zero(tmp_path: Path) -> Non
         assert variant.xpath("mesh")[0].text.endswith("house_cons_0.dae")
 
 
+def test_foundation_actor_five_stages_starts_at_earliest(tmp_path: Path) -> None:
+    """With more stages than health selections the foundation still starts
+    at the earliest stage: heavydamage (the placement-time selection,
+    Foundation.js begins at 1 HP) maps to stage 0, alive to the newest."""
+    base = G3D_FIXTURES / "gold.g3d"
+    cons = G3D_FIXTURES / "house_cons.g3d"
+    png = tmp_path / "art/textures/units/elves/skin.png"
+    stats = MediaConversionStats(
+        models={
+            base: ConvertedMesh(g3d_path=base, mesh_daes=[tmp_path / "art/meshes/elves/house.dae"]),
+            cons: ConvertedMesh(
+                g3d_path=cons,
+                mesh_daes=[
+                    tmp_path / "art/meshes/elves/house_cons_0.dae",
+                    tmp_path / "art/meshes/elves/house_cons_1.dae",
+                    tmp_path / "art/meshes/elves/house_cons_2.dae",
+                    tmp_path / "art/meshes/elves/house_cons_3.dae",
+                    tmp_path / "art/meshes/elves/house_cons_4.dae",
+                ],
+            ),
+        },
+        model_texture={base: png, cons: png},
+    )
+    faction = _faction_with(
+        tmp_path,
+        {"house": _unit(
+            "house",
+            is_building=True,
+            skills={
+                "stop": SkillDef(type="stop", name="s", animation=base),
+                "be_built": SkillDef(type="be_built", name="b", animation=cons),
+            },
+        )},
+    )
+    generate_actors(faction, tmp_path, stats, Settings())
+    root = etree.parse(tmp_path / "art/actors/structures/elves/fndn_house.xml").getroot()
+    by_name = {v.get("name"): v for v in root.xpath("group")[0].xpath("variant")}
+    assert by_name["heavydamage"].xpath("mesh")[0].text.endswith("house_cons_0.dae")
+    assert by_name["mediumdamage"].xpath("mesh")[0].text.endswith("house_cons_2.dae")
+    assert by_name["lightdamage"].xpath("mesh")[0].text.endswith("house_cons_3.dae")
+    assert by_name["alive"].xpath("mesh")[0].text.endswith("house_cons_4.dae")
+
+
 def test_prop_actor_uses_its_own_texture_group(tmp_path: Path) -> None:
     """Extra-mesh prop actors read mesh_textures (per-DAE), not the model's
     first texture."""

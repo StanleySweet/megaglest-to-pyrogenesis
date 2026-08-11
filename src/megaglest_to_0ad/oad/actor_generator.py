@@ -218,7 +218,11 @@ def _build_foundation_actor(
         "alive": n - 1,
         "lightdamage": max(0, n - 2),
         "mediumdamage": max(0, n - 3),
-        "heavydamage": max(0, n - 4),
+        # The health selection at placement is heavydamage (Foundation.js
+        # starts hitpoints at 1), so it must show the EARLIEST stage: the
+        # previous n - 4 skipped the first stage for n >= 5 and a fresh
+        # foundation appeared partially built.
+        "heavydamage": 0,
     }
     root = etree.Element("actor", version="1")
     etree.SubElement(root, "castshadow")
