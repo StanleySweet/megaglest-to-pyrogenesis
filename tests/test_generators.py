@@ -438,6 +438,33 @@ def test_template_sound_component(tmp_path: Path) -> None:
     # components stay in engine registration (alphabetical) order
     tags = [el.tag for el in root]
     assert tags == sorted(tags)
+
+def test_template_builder_component(tmp_path: Path) -> None:
+    """A unit with a build skill lists every faction structure in its
+    Builder component; without the Entities token list the engine never
+    offers the construct command."""
+    worker = _unit(
+        "elf",
+        skills={"build": SkillDef(type="build", name="build")},
+    )
+    archer = _unit("archer", skills={"attack": SkillDef(type="attack", name="attack")})
+    forge = _unit("forge", is_building=True)
+    house = _unit("lore_house", is_building=True)
+    faction = _faction_with(
+        tmp_path,
+        {"elf": worker, "archer": archer, "forge": forge, "lore_house": house},
+    )
+    generate_templates(faction, tmp_path, MediaConversionStats(), Settings())
+
+    elf = etree.parse(tmp_path / "simulation/templates/units/elves/elf.xml").getroot()
+    builder = elf.find("Builder")
+    assert builder is not None
+    assert builder.find("Rate").text == "1.0"
+    # sorted token list, one entry per structure, canonical template ids
+    assert builder.find("Entities").text == "structures/elves/forge\nstructures/elves/lore_house"
+
+    archer_root = etree.parse(tmp_path / "simulation/templates/units/elves/archer.xml").getroot()
+    assert archer_root.find("Builder") is None
 def test_template_footprint_from_model_bbox(tmp_path: Path) -> None:
     """Footprint/Obstruction derive from the base model's measured bbox."""
     g3d = G3D_FIXTURES / "gold.g3d"

@@ -32,3 +32,5 @@
 - [x] Units were silent: the converter wrote SoundGroup XMLs (audio/groups/*.xml) but no template referenced them. Wire <Sound><SoundGroups> per unit: selection-sounds -> select, skill sounds -> the engine animation names the actor wires (die -> death, harvest -> gather_*, attack -> attack_melee/ranged, move -> walk/run); 63 keys wired, 0 missing files
 
 - [x] Foundation actors skipped the earliest construction stage (heavydamage -> cons_02 for 5-stage academy, cons_01 never shown; a placed foundation looked 20% built because Foundation.js starts hitpoints at 1 and the placement selection is heavydamage). Map heavydamage to stage 0.
+
+- [x] Workers could not build anything: _add_builder was a guard-only stub, so no template had a <Builder> component and the engine never offered the construct command. Emit Builder/Rate 1.0 + Entities listing every faction structure (the pack's build-skill speed has no 0 A.D. rate equivalent; build times stay in Cost/BuildTime).

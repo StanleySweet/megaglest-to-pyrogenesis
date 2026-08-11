@@ -94,7 +94,10 @@ def _build_template(
         # must be emitted in that order: Attack, Builder, Cost, Health,
         # Identity, Promotion, Resistance, UnitMotion, Vision.
         _add_attack(root, unit)
-        _add_builder(root, civ, unit)
+        buildable = sorted(
+            sanitize_mod_name(n) for n, u in faction.units.items() if u.is_building
+        )
+        _add_builder(root, civ, unit, buildable)
         _add_cost(root, unit, build_time=False)
         _add_health(root, unit)
         _add_identity(root, civ, unit)
@@ -268,10 +271,26 @@ def _add_vision(root: etree._Element, unit: UnitDef) -> None:
     rng.text = str(max(1, round(sight * TILE_METERS)))
 
 
-def _add_builder(root: etree._Element, civ: str, unit: UnitDef) -> None:
+def _add_builder(
+    root: etree._Element,
+    civ: str,
+    unit: UnitDef,
+    buildable: list[str],
+) -> None:
+    """Builder component for units with a build skill.
+
+    Without <Builder><Entities> the engine never offers the construct
+    command, so a worker that cannot list its buildings cannot build at
+    all. The pack's build-skill speed (ms per work hit) has no direct 0
+    A.D. rate equivalent; keep the public default Rate 1.0 and preserve
+    the pack's build times in Cost/BuildTime instead.
+    """
     if not any(skill.type == "build" for skill in unit.skills.values()):
         return
-
+    builder = etree.SubElement(root, "Builder")
+    etree.SubElement(builder, "Rate").text = "1.0"
+    entities = etree.SubElement(builder, "Entities", datatype="tokens")
+    entities.text = "\n".join(f"structures/{civ}/{name}" for name in buildable)
 
 def _add_promotion(root: etree._Element, civ: str, unit: UnitDef) -> None:
     """Promotion for every unit.
