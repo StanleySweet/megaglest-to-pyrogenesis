@@ -345,9 +345,8 @@ def convert_faction_media(
         # Transparent material at actor time: either the G3D mesh declares
         # alpha-is-transparency (or sub-1 opacity), or any of its diffuse
         # textures actually carries an alpha channel (TGA/PNG with
-        # transparency) -- the engine's player material ignores texture
-        # alpha, so those models need basic_trans.xml. Per-model so the
-        # actor generator does not re-parse the G3D or textures.
+        # alpha, so those models need basic_trans_norm_spec.xml. Per-model so
+        # the actor generator does not re-parse the G3D or textures.
         transparent = any(
             (mesh.properties & _PROP_ALPHA_IS_TRANSPARENCY) or mesh.opacity < 0.999
             for mesh in model.meshes
@@ -355,7 +354,7 @@ def convert_faction_media(
         if not transparent:
             # Any diffuse texture with a real alpha channel makes the model
             # transparent: the engine's player material ignores texture
-            # alpha, so the actor must use basic_trans.xml instead.
+            # alpha, so the actor must use basic_trans_norm_spec.xml instead.
             for name in diffuse_texture_names(model):
                 if not name:
                     continue

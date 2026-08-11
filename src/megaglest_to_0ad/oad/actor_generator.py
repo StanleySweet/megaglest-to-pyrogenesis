@@ -268,10 +268,11 @@ def _prop_actor(civ: str, dae: Path, texture: Path | None, material: str) -> etr
 
 
 def _material_for(g3d: Path, stats: MediaConversionStats, settings: Settings) -> str:
-    """``basic_trans`` for models whose meshes declare alpha transparency;
-    opaque models use the version-appropriate player material."""
+    """``basic_trans_norm_spec`` for models whose meshes declare alpha
+    transparency; opaque models use the version-appropriate player
+    material."""
     if g3d in stats.transparent_models:
-        return "basic_trans.xml"
+        return "basic_trans_norm_spec.xml"
     return material_for(settings.target_version)
 
 

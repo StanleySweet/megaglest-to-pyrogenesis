@@ -32,10 +32,15 @@ def humanize_name(raw: str) -> str:
 
 
 def material_for(target_version: str) -> str:
-    """Player material XML: renamed ``player_trans`` -> ``basic_trans`` in 0.29."""
+    """Player material XML: the ``_norm_spec`` variants (modern 0 A.D. set).
+
+    ``player_trans`` was renamed ``basic_trans`` in 0.29; both versions ship
+    the ``_norm_spec`` variant the converter targets (actors always declare
+    normTex/specTex slots alongside baseTex).
+    """
     if target_version.startswith("0.28"):
-        return "player_trans.xml"
-    return "basic_trans.xml"
+        return "player_trans_norm_spec.xml"
+    return "basic_trans_norm_spec.xml"
 
 
 def resource_cost(resources: dict[str, int]) -> dict[str, int]:

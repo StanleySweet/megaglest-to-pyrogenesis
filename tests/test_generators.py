@@ -170,7 +170,7 @@ def test_actor_generator_writes_actor_referencing_converted_mesh(tmp_path: Path)
     assert norm is not None and norm.get("file") == "default_norm.png"
     spec = root.find('group/variant/textures/texture[@name="specTex"]')
     assert spec is not None and spec.get("file") == "null_black.dds"
-    assert root.find("material").text == "basic_trans.xml"
+    assert root.find("material").text == "basic_trans_norm_spec.xml"
 
 
 def test_actor_material_version_aware(tmp_path: Path) -> None:
@@ -180,7 +180,7 @@ def test_actor_material_version_aware(tmp_path: Path) -> None:
     stats, _dae, _png = _stats_with_model(g3d, tmp_path)
     generate_actors(faction, tmp_path, stats, Settings(target_version="0.28.0"))
     root = etree.parse(tmp_path / "art/actors/units/elves/elf.xml").getroot()
-    assert root.find("material").text == "player_trans.xml"
+    assert root.find("material").text == "player_trans_norm_spec.xml"
 
 
 def test_actor_multi_mesh_emits_props_at_root(tmp_path: Path) -> None:
@@ -225,7 +225,7 @@ def test_actor_transparent_model_uses_transparent_material(tmp_path: Path) -> No
 
     generate_actors(faction, tmp_path, stats, Settings(target_version="0.28.0"))
     root = etree.parse(tmp_path / "art/actors/units/elves/elf.xml").getroot()
-    assert root.find("material").text == "basic_trans.xml"
+    assert root.find("material").text == "basic_trans_norm_spec.xml"
 
 
 def test_actor_generator_skips_unit_without_model(tmp_path: Path) -> None:
