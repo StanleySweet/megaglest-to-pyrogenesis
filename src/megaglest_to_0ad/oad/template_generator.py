@@ -213,6 +213,19 @@ def _add_attack(root: etree._Element, unit: UnitDef) -> None:
         else:
             repeat = 1000
         etree.SubElement(node, "RepeatTime").text = str(repeat)
+        if stats.projectile:
+            # Without a Projectile block the engine applies damage
+            # instantly at the attack event; MG archers mark
+            # attack-projectile so their arrows fly (dodgeable, blocked
+            # by walls). Public defaults: arrow Speed 100 / Gravity 50.
+            projectile = etree.SubElement(node, "Projectile")
+            for name, value in (
+                ("Speed", "100"),
+                ("Spread", "0"),
+                ("Gravity", "50"),
+                ("FriendlyFire", "false"),
+            ):
+                etree.SubElement(projectile, name).text = value
 
 def _add_identity(root: etree._Element, civ: str, unit: UnitDef) -> None:
     label = humanize_name(unit.name)

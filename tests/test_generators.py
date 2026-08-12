@@ -523,6 +523,51 @@ def test_unit_summoner_keeps_trainer(tmp_path: Path) -> None:
     assert trainer.find("Entities").text == "units/elves/dryad"
     tags = [el.tag for el in root]
     assert tags == sorted(tags)
+
+def test_template_attack_projectile(tmp_path: Path) -> None:
+    """MG attack-projectile units get a Projectile block so their arrows
+    fly (flight time, dodgeable); non-projectile units fire instantly."""
+    archer = _unit(
+        "archer",
+        skills={
+            "attack": SkillDef(
+                type="attack",
+                name="attack",
+                anim_speed=100,
+                attack=AttackStats(range=11, attack_type="pierce", projectile=True),
+            )
+        },
+    )
+    spearman = _unit(
+        "spearman",
+        skills={
+            "attack": SkillDef(
+                type="attack",
+                name="attack",
+                attack=AttackStats(range=1, attack_type="hack", projectile=False),
+            )
+        },
+    )
+    faction = _faction_with(tmp_path, {"archer": archer, "spearman": spearman})
+    generate_templates(faction, tmp_path, MediaConversionStats(), Settings())
+
+    archer_root = etree.parse(tmp_path / "simulation/templates/units/elves/archer.xml").getroot()
+    ranged = archer_root.find("Attack/Ranged")
+    assert ranged is not None
+    assert ranged.find("MaxRange").text == "44.0"  # 11 tiles * 4 m
+    projectile = ranged.find("Projectile")
+    assert projectile is not None
+    assert projectile.find("Speed").text == "100"
+    assert projectile.find("Spread").text == "0"
+    assert projectile.find("Gravity").text == "50"
+    assert projectile.find("FriendlyFire").text == "false"
+    # damage type maps pierce -> Pierce
+    assert ranged.find("Damage/Pierce").text is not None
+
+    spear_root = etree.parse(tmp_path / "simulation/templates/units/elves/spearman.xml").getroot()
+    melee = spear_root.find("Attack/Melee")
+    assert melee is not None
+    assert melee.find("Projectile") is None
 def test_template_footprint_from_model_bbox(tmp_path: Path) -> None:
     """Footprint/Obstruction derive from the base model's measured bbox."""
     g3d = G3D_FIXTURES / "gold.g3d"
