@@ -1,4 +1,9 @@
-# MegaGlest to 0 A.D. Mod Converter - Implementation Prompt
+# MegaGlest to 0 A.D. Mod Converter — Plan and Engineering Notes
+
+The conversion spec, plus the reasoning behind behaviour that is not obvious
+from the code. Open work is tracked as GitHub issues (see **Backlog**); the
+checklists below are the delivered record.
+
 
 ## Project Overview
 
@@ -9,7 +14,7 @@ Build a Python 3.11+ CLI tool that converts MegaGlest mega pack data into 0 A.D.
 ### Local-First Policy
 
 - **No network access at runtime.** Conversion, validation, and reference lookup operate only on local files.
-- The only network step is the initial `pip install -r requirements.txt` (or pre-downloaded wheels). Everything after that runs offline.
+- The only network step is the initial `pip install -e ".[dev]"` (or pre-downloaded wheels). Everything after that runs offline.
 - Format schemas are derived from local ground truth: the installed 0 A.D. `public` mod and the input MegaGlest pack itself. No online docs or tools are fetched during development or conversion.
 - Written reference knowledge (mod structure, acceptance checklist, file naming) is integrated directly into this plan; no external documentation is required.
 - Reference mods (e.g. a local clone of the Millennium A.D. mod, used as an example of a hand-authored standalone mod) are copied once and kept on disk; they are optional and never downloaded at runtime.
@@ -18,53 +23,52 @@ Build a Python 3.11+ CLI tool that converts MegaGlest mega pack data into 0 A.D.
 
 ## Project Architecture
 
-### Directory Structure (Target)
+### Directory Structure
 ```
-megaglest_to_0ad_converter/
-├── src/
-│   ├── __init__.py
-│   ├── main.py                    # CLI entry point
+.
+├── src/megaglest_to_0ad/           # import package; the distribution is megaglest-to-pyrogenesis
+│   ├── __main__.py                 # python -m entry point
+│   ├── main.py                     # CLI entry point
 │   ├── core/
-│   │   ├── __init__.py
-│   │   ├── converter.py           # Main orchestrator
-│   │   ├── config.py              # Configuration & paths
-│   │   └── logger.py              # Centralized logging
+│   │   ├── converter.py            # Main orchestrator
+│   │   ├── config.py               # Configuration & paths
+│   │   ├── errors.py
+│   │   ├── logger.py               # Centralized logging
+│   │   └── media_conversion.py     # Per-faction media dispatch
 │   ├── megaglest/
-│   │   ├── __init__.py
-│   │   ├── parser.py              # Parse MegaGlest structures (auto-detect layout)
-│   │   ├── civ_loader.py          # Load civilization data
-│   │   └── asset_inventory.py     # Index assets
+│   │   ├── parser.py               # Parse MegaGlest structures (auto-detect layout)
+│   │   ├── civ_loader.py           # Load civilization data
+│   │   └── asset_inventory.py      # Index assets
 │   ├── oad/
-│   │   ├── __init__.py
-│   │   ├── mod_builder.py         # Build 0 A.D. mod structure
-│   │   ├── civ_generator.py       # Generate simulation/data/civs/*.json
-│   │   ├── actor_generator.py     # Generate art/actors XML
-│   │   ├── template_generator.py  # Generate simulation templates
-│   │   ├── tech_generator.py      # Generate simulation/data/technologies/*.json
-│   │   └── common.py              # Shared scaling/helpers for generators
+│   │   ├── mod_builder.py          # Build 0 A.D. mod structure
+│   │   ├── civ_generator.py        # Generate simulation/data/civs/*.json
+│   │   ├── actor_generator.py      # Generate art/actors XML
+│   │   ├── template_generator.py   # Generate simulation templates
+│   │   ├── tech_generator.py       # Generate simulation/data/technologies/*.json
+│   │   ├── particle_converter.py   # MegaGlest particle XML → 0 A.D. art/particles
+│   │   ├── dae_validator.py        # COLLADA contract checks (validate --meshes)
+│   │   └── common.py               # Shared scaling/helpers for generators
 │   ├── converters/
-│   │   ├── __init__.py
-│   │   ├── mesh_converter.py      # G3D → DAE (native parser + COLLADA writer)
-│   │   ├── texture_converter.py   # TGA/BMP/JPG → PNG
-│   │   ├── audio_converter.py     # WAV → OGG
-│   │   ├── rig.py                 # Morph → skeletal rig synthesis (k-means + Kabsch SVD)
+│   │   ├── mesh_converter.py       # G3D → DAE (native parser + hand-written COLLADA)
+│   │   ├── texture_converter.py    # TGA/BMP/JPG → PNG
+│   │   ├── audio_converter.py      # WAV → OGG (ffmpeg via subprocess)
+│   │   └── rig.py                  # Morph → skeletal rig synthesis (k-means + Kabsch SVD)
 │   └── utils/
-│       ├── __init__.py
-│       ├── file_utils.py          # File operations
-│       ├── validation.py          # Schema validation (against local 0 A.D. data)
-│       └── constants.py           # Shared constants
-├── vendor/
-│   └── g3d/
-│       ├── g3d_format.md          # G3D binary format notes (from MegaGlest source)
-│       └── LICENSE                # GPLv3 (format spec derived from MegaGlest)
+├── vendor/g3d/
+│   ├── g3d_format.md               # G3D binary format notes (from MegaGlest source)
+│   ├── g3dlib.py                   # Reference G3D v4 reader/writer
+│   └── LICENSE                     # GPLv3 (format spec derived from MegaGlest)
 ├── tests/
-│   ├── __init__.py
-│   ├── test_mesh_converter.py
-│   ├── test_texture_converter.py
-│   └── fixtures/                  # Test data (kept local, committed)
-├── pyproject.toml
-├── requirements.txt
-├── .python-version                # 3.11 or higher
+│   ├── test_converters.py
+│   ├── test_generators.py
+│   ├── test_fixture_assets.py      # fixtures must match the generator byte for byte
+│   └── fixtures/                   # Generated test data (kept local, committed)
+├── tools/
+│   ├── make_test_fixtures.py       # Generates every binary under tests/fixtures/
+│   └── validate_*.py, verify_*.py  # One-off inspection scripts
+├── pyproject.toml                  # Single source of dependency truth
+├── uv.lock
+├── LICENSE                         # GPLv3
 └── README.md
 ```
 
@@ -73,44 +77,28 @@ megaglest_to_0ad_converter/
 # Setup (the ONLY step that touches the network; afterwards everything is local)
 python -m venv venv
 source venv/bin/activate  # or venv\Scripts\activate on Windows
-pip install -r requirements.txt
+pip install -e ".[dev]"
 ```
 
 ---
 
 ## Requirements & Dependencies
 
-### Core Requirements (requirements.txt)
-```
-# CLI & Configuration
-click>=8.1.0
-pydantic>=2.0.0
-pydantic-settings>=2.0.0
+### Core Requirements (`pyproject.toml`)
 
-# Logging
-python-json-logger>=2.0.7
+`pyproject.toml` is the only place dependencies are declared; do not add a
+second list here. Runtime: `click`, `pydantic`, `pydantic-settings`,
+`python-json-logger`, `Pillow`, `lxml`, `numpy`. Dev extra: `ruff`, `pytest`,
+`pytest-cov`, `pycollada` (used to cross-check the hand-written COLLADA output).
 
-# Image Processing (TGA/BMP/JPG → PNG)
-Pillow>=10.0.0
-
-# Audio Conversion (WAV to OGG; requires ffmpeg binary on PATH)
-pydub>=0.25.1
-
-# 3D Model Processing (COLLADA export)
-trimesh>=3.20.0
-numpy>=1.24.0
-
-# XML handling (templates, actors)
-lxml>=4.9.0
-
-# Code Quality (dev)
-ruff>=0.1.0
-pytest>=7.0.0
-pytest-cov>=4.0.0
-```
+Two deliberate omissions: there is no `pydub`, because it is uninstallable on
+Python 3.13+ (its `audioop` dependency left the stdlib) — ffmpeg is driven
+through `subprocess` instead. There is no `trimesh`: the G3D parser and the
+COLLADA writer are both hand-written against the format spec, so nothing else
+is needed for 3D.
 
 ### Local Binaries (installed once via system package manager; no runtime downloads)
-- **ffmpeg**: required by pydub for WAV → OGG encoding.
+- **ffmpeg**: invoked directly through `subprocess` for WAV → OGG encoding; must be on `PATH`.
 - **0 A.D. (pyrogenesis)**: used only for the optional `validate` step (launch the mod locally) and to reference the `public` mod files.
 - **Blender**: optional, for manual mesh repair only. NOT part of the conversion pipeline (see Mesh Conversion below).
 
@@ -402,7 +390,7 @@ Structure verified against 0 A.D. 0.29 (`art/actors/units/athenians/infantry_spe
 
 ### 1. Mesh Conversion (MegaGlest G3D → DAE)
 
-**Tool**: in-repo, pure-Python. Parse the G3D binary format using the vendored spec (`vendor/g3d/g3d_format.md`, derived from the MegaGlest source reader), then write COLLADA 1.4.1 via `trimesh.exchange.collada` or a small dedicated writer.
+**Tool**: in-repo, pure-Python. Parse the G3D binary format using the vendored spec (`vendor/g3d/g3d_format.md`, derived from the MegaGlest source reader), then write COLLADA 1.4.1 with a small dedicated writer (no trimesh; `pycollada` is a dev-only cross-check).
 
 Important: MegaGlest `.g3d` is NOT the libgdx `g3dj`/`g3db` format, and existing "G3D exporters" for libgdx do not read it. Do not integrate them.
 
@@ -435,15 +423,15 @@ Important: MegaGlest `.g3d` is NOT the libgdx `g3dj`/`g3db` format, and existing
   one animation DAE per worker, with deterministic (seeded) rig math and
   ordered result collection so output is byte-identical to the sequential
   path (measured: 244 meshes / 93 animations in ~42 s wall vs ~516 s serial
-  on elves_A10; `validate --meshes` and archivebuild both accept it).
+  on demo_A10; `validate --meshes` and archivebuild both accept it).
   Batches of ≤ 2 tasks fall back to sequential to avoid pool-spawn overhead.
 - **Standalone tool** — `tools/morph_to_skeletal.py BASE.g3d [ANIM.g3d ...]`
   is the same rig pipeline as a one-shot CLI: skinned mesh DAE + one
   skeletal animation DAE per input (key = skill part of the filename),
   written under `art/meshes/{civ}/` and `art/animation/{civ}/` for direct
   drop-in. Same deterministic math: byte-identical to the pack converter
-  for the same inputs (verified on dryad: mesh + idle DAE match
-  `--civ elves --rig-bones 6 --anim-speed 40 --loop`).
+  for the same inputs (verified on treant: mesh + idle DAE match
+  `--civ demo --rig-bones 6 --anim-speed 40 --loop`).
 
 **Validation deltas (millenniumad / engine 0.28 archivebuild, 2026-08-06)** — the
 importer contract overrides the literal layout above in these cases:
@@ -522,7 +510,7 @@ class TextureConverter:
 
 ### 3. Audio Conversion (WAV → OGG)
 
-**Tool**: `pydub.AudioSegment` with the local `ffmpeg` binary.
+**Tool**: the local `ffmpeg` binary, driven through `subprocess` (no pydub, see Requirements).
 
 **Specifications**:
 - OGG Vorbis, quality ~ -q:a 6 (≈192 kbps VBR); 0 A.D. uses OGG Vorbis for all sounds.
@@ -534,7 +522,7 @@ class TextureConverter:
 ```python
 class AudioConverter:
     def convert_wav_to_ogg(self, source: Path, output: Path) -> None:
-        """Convert WAV to OGG using pydub/ffmpeg (local binary)."""
+        """Convert WAV to OGG with the local ffmpeg binary."""
         audio = AudioSegment.from_wav(source)
         audio.export(output, format="ogg", parameters=["-q:a", "6"])
 ```
@@ -556,7 +544,7 @@ PSA slots (`rig.bone_names`) to standard bones (`root`/`bone_N`) via
 attack→attack_ranged if `range > 4` or a projectile else attack_melee);
 produce/upgrade/morph/be_built files are emitted but never wired. Actor
 variants wire them with `speed="100"` and `event` = `attack-start-time`.
-Fidelity is approximate (morph → skin); measured ≤ 0.07 units on the dryad
+Fidelity is approximate (morph → skin); measured ≤ 0.07 units on the treant
 idle fixture (683 verts / 19 frames / K=6).
 ### 5. civ.json Generation
 
@@ -588,21 +576,21 @@ MegaGlest {faction}_{unit_type}_{variant} → simulation/templates/units/{civ}/{
 ## Implementation Phases
 
 ### Phase 1: Core Infrastructure (Non-Blocking)
-- [ ] Logging system (JSON-structured logging)
-- [ ] Configuration (CLI args, config files)
-- [ ] File path management
-- [ ] Error handling & validation
+- [x] Logging system (JSON-structured logging)
+- [x] Configuration (CLI args, config files)
+- [x] File path management
+- [x] Error handling & validation
 
 ### Phase 2: MegaGlest Parser
-- [ ] Layout auto-detection (Layout A vs B)
-- [ ] XML parsing (faction, unit, building, tech) — tolerant, field-mapped
-- [ ] Asset inventory (scan all media files; resolve relative paths)
-- [ ] Civilization loader (extract civ data)
+- [x] Layout auto-detection (Layout A vs B)
+- [x] XML parsing (faction, unit, building, tech) — tolerant, field-mapped
+- [x] Asset inventory (scan all media files; resolve relative paths)
+- [x] Civilization loader (extract civ data)
 
 ### Phase 3: Asset Converters
-- [ ] Texture converter (→ PNG with Pillow)
-- [ ] Audio converter (WAV → OGG via pydub/ffmpeg)
-- [ ] Mesh converter (G3D → DAE, native parser + COLLADA writer)
+- [x] Texture converter (→ PNG with Pillow)
+- [x] Audio converter (WAV → OGG via ffmpeg)
+- [x] Mesh converter (G3D → DAE, native parser + COLLADA writer)
 
 ### Phase 4: 0 A.D. Output Generator — DONE (2026-08-06)
 - [x] Mod directory structure builder (mod.json, art/, audio/, simulation/)
@@ -636,8 +624,8 @@ max-hp upgrade `multiply` = start-percentage × (100 + value) / 10000;
 `affects` filtered to faction units; `FoundationActor` omitted (public mod
 ships no `fndn_*` simulation templates).
 
-Engine acceptance (2026-08-06, pinned 0.28.0): full elves_A10 convert →
-archivebuild exit 0 (24,664,605 B) → `pyrogenesis -mod=public -mod=elves_a10`
+Engine acceptance (2026-08-06, pinned 0.28.0): full demo_A10 convert →
+archivebuild exit 0 (24,664,605 B) → `pyrogenesis -mod=public -mod=demo_a10`
 exit 0 with 0 error(s) / 0 warning(s); all 49 generated game-data files
 (20 actors, 20 templates, 8 techs, 1 civ JSON) parse cleanly.
 
@@ -646,16 +634,16 @@ exit 0 with 0 error(s) / 0 warning(s); all 49 generated game-data files
 Morph frames re-encoded as a synthesized skeletal rig (see §4): texture-merged
 skinned mesh DAEs, one animation DAE per skill animation, per-faction skeleton
 XML, actor `<animations>` blocks with `speed`/`event`. Engine acceptance
-(2026-08-06, pinned 0.28.0): full elves_A10 reconvert → archivebuild exit 0 →
+(2026-08-06, pinned 0.28.0): full demo_A10 reconvert → archivebuild exit 0 →
 load smoke exit 0 with 0 error(s) / 0 warning(s), now including PMD+PSA.
 Rig math covered by unit tests (Kabsch rotation fit exact to 1e-9, SVD
 reconstruction exact to 3e-15, `animation_duration` semantics, K > 5
-`use_base_weights` expansion, dryad rest-pose identity).
+`use_base_weights` expansion, treant rest-pose identity).
 
 ### Phase 6: Testing & Validation
-- [ ] Unit tests for converters
-- [ ] Integration tests (full MegaGlest pack conversion from committed fixtures)
-- [ ] Schema validation against the locally installed 0 A.D. `public` mod
+- [x] Unit tests for converters
+- [x] Integration tests (full MegaGlest pack conversion from committed fixtures)
+- [x] Schema validation against the locally installed 0 A.D. `public` mod
 - [ ] Smoke test: launch converted mod in local 0 A.D. (`pyrogenesis -mod=…`)
 - [ ] Archive-build smoke test (`.pyromod` via `-archivebuild`) and install via the mod selection screen
 
@@ -767,7 +755,7 @@ def convert(megaglest_data: str, output: str, factions: tuple, log_level: str):
 
 ### Unit Tests
 - Texture converter (fixed TGA/BMP fixtures)
-- Audio converter (mock pydub)
+- Audio converter (stub ffmpeg)
 - XML parsers (fixed XML samples)
 - G3D parser (small committed .g3d fixtures; parse + round-trip)
 - Path normalization
@@ -780,15 +768,22 @@ def convert(megaglest_data: str, output: str, factions: tuple, log_level: str):
 ### Test Fixtures
 ```
 tests/fixtures/
-├── megaglest_sample/
-│   ├── techs/{tech}/factions/{faction}/   # or flat factions/ layout
-│   ├── tilesets/
-│   └── ...
-└── expected_output/
-    ├── simulation/
-    ├── art/
-    └── audio/
+├── g3d/            # hand-built G3D v3 + v4 models and textures
+└── packs/          # two pack layouts (A: techs/, B: flat factions/)
+    ├── layout_a/
+    ├── layout_b/
+    └── broken/     # a deliberately invalid faction for the error paths
 ```
+No fixture bytes come from a MegaGlest pack. `tools/make_test_fixtures.py`
+generates every binary in the tree — models, PNG/TGA/BMP textures, WAV sound
+and the OGG music stub — from code, and `tests/test_fixture_assets.py` fails if
+a committed file stops matching the generator or if a binary appears that the
+generator does not own. Regenerate with:
+
+```bash
+python tools/make_test_fixtures.py
+```
+
 All fixtures are committed to the repo — no network access in CI.
 
 ---
@@ -796,14 +791,14 @@ All fixtures are committed to the repo — no network access in CI.
 ## Error Handling & Validation
 
 ### Validation Checklist
-- [ ] MegaGlest pack structure valid (layout detected, required XML files present)
-- [ ] All referenced assets exist (relative paths resolved)
-- [ ] G3D files parseable (magic + version checked)
-- [ ] Output 0 A.D. JSON/XML schema-compliant (validated against local `public` mod reference files)
-- [ ] No duplicate civilization codes
-- [ ] `mod.json` `name` matches the mod folder name
-- [ ] `mod.json` sits directly at the mod root (no wrapper directory around it — the #1 mod.io rejection cause)
-- [ ] `ignoreInCompatibilityChecks` absent (or only set for non-`simulation/` mods)
+- [x] MegaGlest pack structure valid (layout detected, required XML files present)
+- [x] All referenced assets exist (relative paths resolved)
+- [x] G3D files parseable (magic + version checked)
+- [x] Output 0 A.D. JSON/XML schema-compliant (validated against local `public` mod reference files)
+- [x] No duplicate civilization codes
+- [x] `mod.json` `name` matches the mod folder name
+- [x] `mod.json` sits directly at the mod root (no wrapper directory around it — the #1 mod.io rejection cause)
+- [x] `ignoreInCompatibilityChecks` absent (or only set for non-`simulation/` mods)
 - [ ] Archive build succeeds and the mod shows green in the 0 A.D. mod selection screen
 
 ### Error Messages (Structured Logging)
@@ -834,7 +829,7 @@ All reference material is local. Nothing here is fetched at build or run time.
 ### Known Challenges
 1. **G3D format is bespoke and versioned**: G3D v3 vs v4 headers differ (v4 adds per-vertex animation frames). Handle both, reject unknown versions with a clear error. Test against the fixtures and real pack files.
 2. **0 A.D. version skew**: template `parent` syntax and some JSON fields changed across 0.25–0.29. Pin the target version (0.29.x), and validate output against the local install's own files; the `validate` command is the safety net.
-3. **Synthetic-rig fidelity**: G3D has no bones, so the skeleton is an approximation; a 6-joint rig cannot reproduce arbitrary morphs exactly (measured ≤ 0.07 units on dryad idle). Skill files with divergent rest poses (differing frame-0 geometry from the base model) are the worst case — weights come from base-model rest proximity. Increasing `--rig-bones` trades conversion time for accuracy. See §Mesh Conversion.
+3. **Synthetic-rig fidelity**: G3D has no bones, so the skeleton is an approximation; a 6-joint rig cannot reproduce arbitrary morphs exactly (measured ≤ 0.07 units on treant idle). Skill files with divergent rest poses (differing frame-0 geometry from the base model) are the worst case — weights come from base-model rest proximity. Increasing `--rig-bones` trades conversion time for accuracy. See §Mesh Conversion.
 4. **Texture paths**: MegaGlest uses flat relative paths; 0 A.D. is hierarchical (`art/textures/units/{civ}/…`). Map during conversion and validate final paths.
 
 ### Extensibility
@@ -854,12 +849,45 @@ All reference material is local. Nothing here is fetched at build or run time.
 
 ---
 
-## Next Steps
+## Engineering Notes
 
-1. **Skeleton**: Core infrastructure (logging, CLI, config)
-2. **MegaGlest Parser**: Read & validate MegaGlest packs
-3. **Asset Converters**: Implement media converters
-4. **Output Generator**: Build 0 A.D. mod structure
-5. **Integration**: G3D → DAE conversion (texture-merged; rigged + animated)
-6. **Testing**: Unit + integration tests
-7. **Deployment**: venv setup; optional archive build via the local 0 A.D. `-archivebuild` flag
+Behaviour that is not obvious from reading the code, and why it ended up that
+way.
+
+### Template components and content gaps
+- [x] Units were silent: the converter wrote `audio/groups/*.xml` but no template referenced them. Wire `<Sound><SoundGroups>` per unit — selection sounds to `select`, and skill sounds to the names the engine's animations use (`die` → `death`, `harvest` → `gather_*`, `attack` → `attack_melee`/`attack_ranged`, `move` → `walk`/`run`). 63 keys wired, 0 missing files.
+- [x] Foundation actors skipped their earliest construction stage (`heavydamage` → `cons_02` on a 5-stage building, so `cons_01` was never shown; a placed foundation looked 20% built because `Foundation.js` starts hitpoints at 1 and the placement selection is `heavydamage`). Map `heavydamage` to stage 0.
+- [x] Workers could not build anything: `_add_builder` was a guard-only stub, so no template had a `<Builder>` component and the engine never offered the construct command. Emit `Builder`/`Rate 1.0` plus `Entities` listing every faction structure. The pack's build-skill speed has no 0 A.D. rate equivalent, so build times stay in `Cost/BuildTime`.
+- [x] Workers could not gather: no template had a `<ResourceGatherer>`, and the worker's fallback parent `template_unit_support` carries none, so every harvest skill was dead. Emit `ResourceGatherer` with public per-subtype rates (a missing rate means ungatherable) and 10-unit carries for units with a harvest skill, inserted in engine registration order.
+- [x] Mobile summoners were misclassified as buildings: `_classify_building` treated any `produce` skill as a static producer, but MegaGlest summons are produce skills on field units. Add a mobility check (a `move` skill means unit) after the structure markers; mobile summoners keep their produce commands as a unit `Trainer`, which is entity-generic in the engine.
+- [x] Projectile attacks were instant-hit: `_add_attack` emitted only `AttackName`/`Damage`/`MaxRange`/`RepeatTime`, so `Attack.js` applied damage at the attack event with no flight time. Emit a `Projectile` block (Speed 100 / Spread 0 / Gravity 50 / FriendlyFire false — the public arrow defaults) for every skill with `attack-projectile=true`.
+- [x] Projectile meshes were converted but no actor referenced them, so flying arrows and rocks were invisible in game. Generate a projectile actor and add `VisualActor` to the `Projectile` block of every ranged and siege attack.
+- [x] Flying units must use `unitmotionflying`.
+- [x] `<Researcher><Technologies>` referenced display names rather than canonical upgrade ids, which broke every tech reference. Parse `<produced-upgrade>` and use that instead.
+- [x] Custom MegaGlest resources were dropped silently by `resource_cost()`, whose `RESOURCE_MAP` covers gold/wood/stone/food only. `grace` maps to population — a positive cost becomes `Cost/Population` slots, a negative one a `Population/Bonus` cap. Every other custom resource now warns per unit/tech/civ instead of vanishing.
+- [x] Material naming moved to the modern `_norm_spec` variants; a missing `normTex` falls back to `default_norm.png` and a missing `specTex` to `null_black.dds`.
+- [x] Numbers are zero-padded (`_01`, not `_1`) to match the engine's variant convention.
+
+### Performance
+`build_rig` k-means in `converters/rig.py` was the bottleneck. Feature vectors are rest position plus per-frame displacements, so dims = 3 + 3×(frames−1); a 2465-vertex, 32-bone, 76-frame model took ~36 s. It now runs on numpy arrays — k-means++, batched Kabsch via 3×3 SVD, vectorised soft weights and nearest-neighbour, with a fresh `default_rng(0)` per `_kmeans` so output stays deterministic. That model builds in 1.3 s and a full pack run in 1–3 min, byte-identical across runs.
+
+`validate --meshes` was unusably slow from quadratic skin-weight parsing. Parsing the weights once made it ~70× faster: 225/225 DAEs importable in seconds.
+
+What remains is the 145 animation DAE writes, each re-reading the base and animation models and re-embedding full geometry, using brute-force nearest-neighbour when the base and animation models differ. Tracked in the backlog.
+
+## Backlog
+
+Open work, tracked as GitHub issues. Story points are the usual Fibonacci guess.
+
+| Issue | Labels | Points |
+|---|---|---|
+| Convert MegaGlest maps into 0 A.D. maps | `enhancement` | 13 |
+| Ship the civ loading screen in the converted mod | `bug` | 2 |
+| Cache parsed models and replace brute-force NN with a KD-tree | `performance` | 8 |
+| Spike: are compiled hot loops still worth it after the above | `performance`, `spike` | 5 |
+| Release gate: a converted mod loads green in 0 A.D. | `verification` | 3 |
+| Release gate: the `.pyromod` archive installs from the mod screen | `verification` | 3 |
+
+The two release gates are the only work here that cannot run in CI: both need a
+local 0 A.D. install. The remaining unchecked boxes in **Phase 6** and the
+**Validation Checklist** above are exactly those two.
