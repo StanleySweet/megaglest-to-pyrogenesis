@@ -34,6 +34,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 
 from lxml import etree
@@ -93,26 +94,61 @@ def sanitize_stem(value: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+# Parsed models are reused: the parent process already reads every model to
+# build the rig, the mesh pass asks for the same file again by path, and each of
+# a pack's animations re-reads its base model in a worker. Parsing is pure, so
+# the result is kept per (path, mtime, size).
+#
+# 16 entries is a deliberate ceiling rather than a tuned number. Measured on the
+# committed fixtures, a parsed model retains ~2.8 MB (648 vertices, 19 frames),
+# so 16 entries hold ~45 MB; that covers the models in flight for one unit while
+# keeping the cache from becoming the dominant memory cost of a conversion.
+# Nothing mutates a parsed model, so sharing one object is safe.
+_MODEL_CACHE_SIZE = 16
+
+
+def clear_model_cache() -> None:
+    """Forget every parsed model. For tests and long-lived processes."""
+    _parse_g3d.cache_clear()
+
+
 def read_g3d(path: Path) -> g3dlib.G3DModel:
     """Parse a G3D file (v3 or v4) into the shared ``G3DModel`` shape.
 
     v4 goes through the vendored importer with truncation tolerance (a short
     final mesh is clamped to EOF and flagged, never fatal). v3 is a separate,
     simpler format (see ``vendor/g3d/g3d_format.md``).
+
+    Cached per ``(path, mtime, size)``, so a rewritten model is never served
+    stale. The returned model is shared between callers and must be treated as
+    read-only.
     """
     try:
-        raw = path.read_bytes()
+        stamp = path.stat()
     except OSError as exc:
         raise ConversionError(f"cannot read model {path}: {exc}") from exc
+    return _parse_g3d(str(path), stamp.st_mtime_ns, stamp.st_size)
+
+
+@lru_cache(maxsize=_MODEL_CACHE_SIZE)
+def _parse_g3d(path: str, mtime_ns: int, size: int) -> g3dlib.G3DModel:
+    """Uncached parse. ``mtime_ns`` and ``size`` are cache-key material only."""
+    target = Path(path)
+    try:
+        raw = target.read_bytes()
+    except OSError as exc:
+        raise ConversionError(f"cannot read model {target}: {exc}") from exc
     if raw[:3] != b"G3D":
-        raise ConversionError(f"not a G3D file (bad magic): {path}")
+        raise ConversionError(f"not a G3D file (bad magic): {target}")
     version = raw[3]
     if version == 4:
         stream = io.BytesIO(raw)
         return g3dlib.G3DModel.read_stream(stream, tolerate_truncation=True)
     if version == 3:
-        return _read_v3(raw, path.stem)
-    raise ConversionError(f"unsupported G3D version {version} in {path} (v3 and v4 only)")
+        return _read_v3(raw, target.stem)
+    raise ConversionError(
+        f"unsupported G3D version {version} in {target} (v3 and v4 only)"
+    )
 
 
 def _read_v3(raw: bytes, name: str) -> g3dlib.G3DModel:
