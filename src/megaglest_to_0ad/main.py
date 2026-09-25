@@ -81,7 +81,7 @@ def list_factions(megaglest_data: Path, log_level: str) -> None:
 @click.option(
     "--rig-bones",
     type=click.IntRange(min=2, max=64),
-    default=6,
+    default=32,
     show_default=True,
     help="Maximum joints (incl. root) of the synthesized rig per model.",
 )

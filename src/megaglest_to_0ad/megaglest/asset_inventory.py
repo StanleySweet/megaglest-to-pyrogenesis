@@ -110,6 +110,7 @@ def _collect_faction_refs(inventory: AssetInventory, faction: Faction) -> None:
     _add_ref(inventory, owner, faction.music)
     _add_ref(inventory, owner, faction.loading_screen)
     for particle in faction.particles:
+        _add_particle(inventory, particle)
         _add_ref(inventory, owner, particle)
     for unit in faction.units.values():
         _collect_unit_refs(inventory, owner, unit)
@@ -130,10 +131,15 @@ def _collect_unit_refs(inventory: AssetInventory, owner_base: str, unit: UnitDef
         for sound in skill.sounds:
             _add_ref(inventory, owner, sound)
         for particle in skill.particles:
+            _add_particle(inventory, particle)
             _add_ref(inventory, owner, particle)
         if skill.attack is not None:
-            _add_ref(inventory, owner, skill.attack.projectile_particle)
-            _add_ref(inventory, owner, skill.attack.splash_particle)
+            if skill.attack.projectile_particle is not None:
+                _add_particle(inventory, skill.attack.projectile_particle)
+                _add_ref(inventory, owner, skill.attack.projectile_particle)
+            if skill.attack.splash_particle is not None:
+                _add_particle(inventory, skill.attack.splash_particle)
+                _add_ref(inventory, owner, skill.attack.splash_particle)
             for sound in skill.attack.sounds:
                 _add_ref(inventory, owner, sound)
     for command in unit.commands:
@@ -144,6 +150,12 @@ def _collect_upgrade_refs(inventory: AssetInventory, owner_base: str, upgrade: U
     owner = f"{owner_base}/upgrades/{upgrade.name}"
     _add_ref(inventory, owner, upgrade.image)
     _add_ref(inventory, owner, upgrade.image_cancel)
+
+
+def _add_particle(inventory: AssetInventory, ref: Path | None) -> None:
+    if ref is None or ref in inventory.particles:
+        return
+    inventory.particles.append(ref)
 
 
 def _add_ref(inventory: AssetInventory, owner: str, ref: Path | None) -> None:

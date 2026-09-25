@@ -44,10 +44,10 @@ def _count(root: etree._Element, path: str) -> int:
 
 def test_gold_static_dae(tmp_path: Path) -> None:
     converter = MeshConverter()
-    result = converter.convert_g3d_to_dae(G3D_FIXTURES / "gold.g3d", tmp_path / "meshes", "elves")
+    result = converter.convert_g3d_to_dae(G3D_FIXTURES / "gold.g3d", tmp_path / "meshes", "demo")
     assert result.mesh_count == 1
     assert result.vertex_count == 216
-    assert result.triangle_count == 192
+    assert result.triangle_count == 300
     assert len(result.mesh_daes) == 1
     assert result.warnings == []
     root = etree.parse(result.mesh_daes[0]).getroot()
@@ -63,11 +63,11 @@ def test_gold_static_dae(tmp_path: Path) -> None:
     # <vertices> is POSITION-only; NORMAL/TEXCOORD live in <triangles>
     assert root.xpath("//c:vertices/c:input/@semantic", namespaces=NS) == ["POSITION"]
     tris = root.xpath("//c:triangles", namespaces=NS)[0]
-    assert tris.get("count") == "192"
+    assert tris.get("count") == "300"
     assert tris.get("material") is None
     assert len(tris.xpath("c:input", namespaces=NS)) == 3
     p = tris.xpath("c:p/text()", namespaces=NS)[0].split()
-    assert len(p) == 192 * 3 * 3  # 3 verts x 3 inputs interleaved
+    assert len(p) == 300 * 3 * 3  # 3 verts x 3 inputs interleaved
     # Y-up, unit = 1 meter
     up = root.xpath("//c:up_axis/text()", namespaces=NS)[0]
     unit = root.xpath("//c:unit/@meter", namespaces=NS)[0]
@@ -82,7 +82,7 @@ def test_static_dae_winding_matches_g3d_verbatim(tmp_path: Path) -> None:
     ReindexGeometry preserves order), so flipping here would invert lighting.
     """
     result = MeshConverter().convert_g3d_to_dae(
-        G3D_FIXTURES / "gold.g3d", tmp_path / "meshes", "elves"
+        G3D_FIXTURES / "gold.g3d", tmp_path / "meshes", "demo"
     )
     root = etree.parse(result.mesh_daes[0]).getroot()
     p = root.xpath("//c:triangles/c:p/text()", namespaces=NS)[0].split()
@@ -96,7 +96,7 @@ def test_dae_authoring_tool_identifies_converter(tmp_path: Path) -> None:
     """The DAE contributor names the converter; the element is the COLLADA
     1.5 ``authoring_tool`` (FCollada rejects ``source_tool`` as unknown)."""
     result = MeshConverter().convert_g3d_to_dae(
-        G3D_FIXTURES / "gold.g3d", tmp_path / "meshes", "elves"
+        G3D_FIXTURES / "gold.g3d", tmp_path / "meshes", "demo"
     )
     root = etree.parse(result.mesh_daes[0]).getroot()
     tool = root.xpath("//c:contributor/c:authoring_tool/text()", namespaces=NS)
@@ -107,11 +107,11 @@ def test_dae_authoring_tool_identifies_converter(tmp_path: Path) -> None:
 def test_dae_stays_geometry_only_with_textures_present(tmp_path: Path) -> None:
     """Textures next to the DAE never leak into it (actor job, not mesh)."""
     converter = MeshConverter()
-    tex_path = tmp_path / "textures" / "units" / "elves" / "texture_gold.png"
+    tex_path = tmp_path / "textures" / "units" / "demo" / "texture_gold.png"
     tex_path.parent.mkdir(parents=True)
     tex_path.write_bytes((G3D_FIXTURES / "texture_gold.png").read_bytes())
     result = converter.convert_g3d_to_dae(
-        G3D_FIXTURES / "gold.g3d", tmp_path / "meshes" / "elves", "elves"
+        G3D_FIXTURES / "gold.g3d", tmp_path / "meshes" / "demo", "demo"
     )
     root = etree.parse(result.mesh_daes[0]).getroot()
     assert _count(root, "//c:image") == 0
@@ -120,20 +120,20 @@ def test_dae_stays_geometry_only_with_textures_present(tmp_path: Path) -> None:
     assert _count(root, "//c:newparam") == 0
 
 
-def test_dryad_idle_multi_mesh_static_only(tmp_path: Path) -> None:
+def test_treant_idle_multi_mesh_static_only(tmp_path: Path) -> None:
     """Multi-mesh G3D splits into one static DAE per mesh; no animation."""
     converter = MeshConverter()
     result = converter.convert_g3d_to_dae(
-        G3D_FIXTURES / "dryad_idle.g3d", tmp_path / "meshes", "elves"
+        G3D_FIXTURES / "treant_idle.g3d", tmp_path / "meshes", "demo"
     )
     assert result.mesh_count == 3
-    assert result.vertex_count == 683  # 210 + 359 + 114
-    assert result.triangle_count == 1026  # 900 + 1722 + 456 indices / 3
+    assert result.vertex_count == 648  # 3 meshes x 216
+    assert result.triangle_count == 900  # 3 x 900 indices / 3
     assert len(result.mesh_daes) == 3
     assert [p.stem for p in result.mesh_daes] == [
-        "dryad_idle_01",
-        "dryad_idle_02",
-        "dryad_idle_03",
+        "treant_idle_01",
+        "treant_idle_02",
+        "treant_idle_03",
     ]
     for path in result.mesh_daes:
         assert path.exists()
@@ -151,10 +151,10 @@ def test_dryad_idle_multi_mesh_static_only(tmp_path: Path) -> None:
         assert _count(root, "//c:node") == 1
 
 
-def test_academy_cons_no_uv_mesh(tmp_path: Path) -> None:
+def test_workshop_cons_no_uv_mesh(tmp_path: Path) -> None:
     """Mesh.006 has textures==0 (no UV block); file parses to exact EOF."""
     result = MeshConverter().convert_g3d_to_dae(
-        G3D_FIXTURES / "academy_cons.g3d", tmp_path / "meshes", "elves"
+        G3D_FIXTURES / "workshop_cons.g3d", tmp_path / "meshes", "demo"
     )
     assert result.mesh_count == 5
     assert len(result.mesh_daes) == 5
@@ -169,7 +169,9 @@ def test_academy_cons_no_uv_mesh(tmp_path: Path) -> None:
     no_uv = etree.parse(result.mesh_daes[4]).getroot()
     uv = no_uv.xpath("//c:triangles/c:input[@semantic='TEXCOORD']", namespaces=NS)
     assert len(uv) == 1
-    src = no_uv.xpath("//c:float_array[@id='mg_academy_cons-m4-texcoords-array']", namespaces=NS)[0]
+    src = no_uv.xpath(
+        "//c:float_array[@id='mg_workshop_cons-m4-texcoords-array']", namespaces=NS
+    )[0]
     assert src.get("count") == "864"  # 432 vertices x 2 UV floats
     floats = src.text.split()
     assert len(floats) == 2 * 432
@@ -179,28 +181,28 @@ def test_academy_cons_no_uv_mesh(tmp_path: Path) -> None:
     ]
 
 
-def test_v3_mage_tower_destruction(tmp_path: Path) -> None:
+def test_v3_tower_destruction(tmp_path: Path) -> None:
     result = MeshConverter().convert_g3d_to_dae(
-        G3D_FIXTURES / "mage_tower_destruction.g3d", tmp_path / "meshes", "elves"
+        G3D_FIXTURES / "tower_destruction.g3d", tmp_path / "meshes", "demo"
     )
     assert result.mesh_count == 1
     assert result.vertex_count == 836
-    assert result.triangle_count == 668  # 2004 indices / 3
+    assert result.triangle_count == 1440  # 4320 indices / 3
     assert result.warnings == []
     root = etree.parse(result.mesh_daes[0]).getroot()
     assert _count(root, "//c:geometry") == 1
 
 
 def test_v3_doubled_texture_extension_preserved() -> None:
-    model = read_g3d(G3D_FIXTURES / "mage_tower_destruction.g3d")
+    model = read_g3d(G3D_FIXTURES / "tower_destruction.g3d")
     names = [n for n in diffuse_texture_names(model) if n]
-    assert names == ["texture_ashes_magic.tga.tga"]  # spec-preserved, not cleaned
+    assert names == ["texture_spark.tga.tga"]  # spec-preserved, not cleaned
 
 
 def test_texture_stem_strips_doubled_extension() -> None:
-    assert texture_stem("texture_ashes_magic.tga.tga") == "texture_ashes_magic"
+    assert texture_stem("texture_spark.tga.tga") == "texture_spark"
     assert texture_stem("gold.bmp") == "gold"
-    assert texture_stem("elf.png") == "elf"
+    assert texture_stem("grunt.png") == "grunt"
     assert texture_stem("sound.wav") == "sound.wav"  # not an image ext
 
 
@@ -216,7 +218,7 @@ def test_convert_to_png_rgba(tmp_path: Path) -> None:
 
 def test_convert_tga(tmp_path: Path) -> None:
     out = tmp_path / "ashes.png"
-    TextureConverter().convert_to_png(G3D_FIXTURES / "texture_ashes_magic.tga.tga", out)
+    TextureConverter().convert_to_png(G3D_FIXTURES / "texture_spark.tga.tga", out)
     from PIL import Image
 
     with Image.open(out) as img:
@@ -248,9 +250,9 @@ def test_wav_to_ogg(tmp_path: Path) -> None:
         / "packs"
         / "layout_b"
         / "factions"
-        / "elves"
+        / "demo"
         / "units"
-        / "elf"
+        / "grunt"
         / "sounds"
         / "ack1.wav"
     )
@@ -266,7 +268,7 @@ def test_ogg_copied_verbatim(tmp_path: Path) -> None:
         / "packs"
         / "layout_b"
         / "factions"
-        / "elves"
+        / "demo"
         / "music"
         / "theme.ogg"
     )
@@ -276,8 +278,8 @@ def test_ogg_copied_verbatim(tmp_path: Path) -> None:
 
 
 def test_sound_group_xml(tmp_path: Path) -> None:
-    group = tmp_path / "groups" / "dryad_select.xml"
-    AudioConverter().write_sound_group(group, "audio/sfx/elves/", ["a.ogg", "b.ogg"])
+    group = tmp_path / "groups" / "treant_select.xml"
+    AudioConverter().write_sound_group(group, "audio/sfx/demo/", ["a.ogg", "b.ogg"])
     root = etree.parse(group).getroot()
     assert root.tag == "SoundGroup"
     tags = [child.tag for child in root]
@@ -297,7 +299,7 @@ def test_sound_group_xml(tmp_path: Path) -> None:
         "Sound",
     ]
     assert root.find("Gain").text == "1"
-    assert root.find("Path").text == "audio/sfx/elves/"
+    assert root.find("Path").text == "audio/sfx/demo/"
     assert [s.text for s in root.findall("Sound")] == ["a.ogg", "b.ogg"]
 
 
@@ -308,7 +310,7 @@ def test_sound_group_xml(tmp_path: Path) -> None:
 
 def test_skip_media_produces_nothing(layout_b_pack: Path, tmp_path: Path) -> None:
     pack = discover_pack(layout_b_pack)
-    faction = load_faction(pack, pack.factions_dir / "elves")
+    faction = load_faction(pack, pack.factions_dir / "demo")
     stats = convert_faction_media(faction, tmp_path / "mod", Settings(skip_media=True))
     assert stats.meshes == 0
     assert stats.textures == 0
@@ -321,13 +323,13 @@ def test_skip_media_produces_nothing(layout_b_pack: Path, tmp_path: Path) -> Non
 def test_media_conversion_resilient(layout_b_pack: Path, tmp_path: Path) -> None:
     """Junk fixture G3Ds fail loudly but portraits/audio still convert."""
     pack = discover_pack(layout_b_pack)
-    faction = load_faction(pack, pack.factions_dir / "elves")
+    faction = load_faction(pack, pack.factions_dir / "demo")
     stats = convert_faction_media(faction, tmp_path / "mod", Settings(), pack.resources_dir)
     assert stats.meshes == 0  # 7-byte placeholder G3Ds
     assert stats.warnings  # one warning per broken model
     assert stats.music == 1  # theme.ogg copied
-    assert stats.textures >= 2  # elf.bmp + barracks.bmp portraits
-    assert any(path.endswith("elf.png") for path in stats.generated)
+    assert stats.textures >= 2  # grunt.bmp + barracks.bmp portraits
+    assert any(path.endswith("grunt.png") for path in stats.generated)
     assert any(path.endswith("theme.ogg") for path in stats.generated)
 
 
@@ -341,7 +343,7 @@ def test_mesh_stem_collision_deduped(tmp_path: Path) -> None:
         target.write_bytes((G3D_FIXTURES / "gold.g3d").read_bytes())
 
     faction = Faction(
-        name="elves",
+        name="demo",
         directory=tmp_path,
         xml_path=tmp_path / "factions.xml",
         units={
@@ -353,7 +355,7 @@ def test_mesh_stem_collision_deduped(tmp_path: Path) -> None:
     mod = tmp_path / "mod"
     stats = convert_faction_media(faction, mod, Settings(), tmp_path)
 
-    meshes_dir = mod / "art/meshes" / "elves"
+    meshes_dir = mod / "art/meshes" / "demo"
     assert sorted(p.name for p in meshes_dir.glob("*.dae")) == [
         "stone.dae",
         "stone_01.dae",
@@ -386,7 +388,7 @@ def test_texture_alpha_flags_model_transparent(tmp_path: Path) -> None:
         img.save(alpha_dir / "texture_gold.png")
 
     faction = Faction(
-        name="elves",
+        name="demo",
         directory=tmp_path,
         xml_path=tmp_path / "factions.xml",
         units={
@@ -410,7 +412,7 @@ def test_texture_content_dedup(tmp_path: Path) -> None:
     dirs = [tmp_path / "a", tmp_path / "b"]
     written: set[Path] = set()
     texture_by_hash: dict[str, Path] = {}
-    textures_dir = mod / "art/textures/skins/units/elves"
+    textures_dir = mod / "art/textures/skins/units/demo"
     for model_dir in dirs:
         model_dir.mkdir(parents=True)
         (model_dir / "texture_gold.png").write_bytes(texture_bytes)
@@ -427,8 +429,8 @@ def test_texture_content_dedup(tmp_path: Path) -> None:
         texture_by_hash[digest] = output
         written.add(output)
 
-    pngs = list((mod / "art/textures/skins/units/elves").glob("*.png"))
-    assert pngs == [mod / "art/textures/skins/units/elves/texture_gold.png"]
+    pngs = list((mod / "art/textures/skins/units/demo").glob("*.png"))
+    assert pngs == [mod / "art/textures/skins/units/demo/texture_gold.png"]
 
 
 # ---------------------------------------------------------------------------
@@ -461,11 +463,11 @@ def test_kabsch_fits_rotation_without_scale() -> None:
     assert t2 == pytest.approx([0.0, 0.0, 0.0], abs=1e-9)
 
 
-def test_texture_groups_partition_dryad() -> None:
-    """Meshes merge by resolved texture: [0] and [1, 2] for the dryad."""
+def test_texture_groups_partition_treant() -> None:
+    """Meshes merge by resolved texture: [0] and [1, 2] for the treant."""
     from megaglest_to_0ad.converters.mesh_converter import texture_groups
 
-    model = read_g3d(G3D_FIXTURES / "dryad_idle.g3d")
+    model = read_g3d(G3D_FIXTURES / "treant_idle.g3d")
     groups = texture_groups(model, lambda name: Path("/tex") / name)
     assert groups == [[0], [1, 2]]
 
@@ -475,11 +477,11 @@ def test_static_same_texture_merge_single_instance(tmp_path: Path) -> None:
     geometry with a single instanced object per DAE."""
     from megaglest_to_0ad.converters.mesh_converter import MeshConverter, texture_groups
 
-    model = read_g3d(G3D_FIXTURES / "dryad_idle.g3d")
+    model = read_g3d(G3D_FIXTURES / "treant_idle.g3d")
     groups = texture_groups(model, lambda name: Path("/tex") / name)
     assert groups == [[0], [1, 2]]
     result = MeshConverter().convert_g3d_to_dae(
-        G3D_FIXTURES / "dryad_idle.g3d", tmp_path / "meshes", "elves", groups=groups
+        G3D_FIXTURES / "treant_idle.g3d", tmp_path / "meshes", "demo", groups=groups
     )
     assert len(result.mesh_daes) == 2
     for dae in result.mesh_daes:
@@ -497,10 +499,10 @@ def test_static_per_mesh_groups_keep_separate_daes(tmp_path: Path) -> None:
     """groups=[[i] for each mesh] (construction stages) stay one DAE each."""
     from megaglest_to_0ad.converters.mesh_converter import MeshConverter
 
-    model = read_g3d(G3D_FIXTURES / "academy_cons.g3d")
+    model = read_g3d(G3D_FIXTURES / "workshop_cons.g3d")
     groups = [[i] for i in range(len(model.meshes))]
     result = MeshConverter().convert_g3d_to_dae(
-        G3D_FIXTURES / "academy_cons.g3d", tmp_path / "meshes", "elves", groups=groups
+        G3D_FIXTURES / "workshop_cons.g3d", tmp_path / "meshes", "demo", groups=groups
     )
     assert len(result.mesh_daes) == len(model.meshes)
     for dae in result.mesh_daes:
@@ -512,7 +514,7 @@ def test_texture_groups_uvless_own_group() -> None:
     """UV-less meshes (textures == 0) group under None, first-seen order."""
     from megaglest_to_0ad.converters.mesh_converter import texture_groups
 
-    model = read_g3d(G3D_FIXTURES / "academy_cons.g3d")
+    model = read_g3d(G3D_FIXTURES / "workshop_cons.g3d")
     names = [n for n in diffuse_texture_names(model) if n]
     assert names, "fixture must have textured meshes"
     groups = texture_groups(model, lambda name: Path("/tex") / name)
@@ -524,10 +526,10 @@ def test_fit_group_frames_expands_base_weights(tmp_path: Path) -> None:
     """use_base_weights handles more bones than max influences (K > 5)."""
     from megaglest_to_0ad.converters.rig import build_rig, fit_group_frames
 
-    model = read_g3d(G3D_FIXTURES / "dryad_idle.g3d")
+    model = read_g3d(G3D_FIXTURES / "treant_idle.g3d")
     groups = [list(range(len(model.meshes)))]
     rig = build_rig(model, groups, 7, "test_root")
-    frames = fit_group_frames(model, rig, use_base_weights=True)
+    frames = fit_group_frames(model, model, rig, use_base_weights=True)
     assert len(frames) == 19
     assert len(frames[0]) == 7
     for r, _t in frames[0]:
@@ -539,13 +541,13 @@ def test_multi_group_skin_matches_group_geometry(tmp_path: Path) -> None:
     from megaglest_to_0ad.converters.mesh_converter import MeshConverter, texture_groups
     from megaglest_to_0ad.converters.rig import build_rig
 
-    model = read_g3d(G3D_FIXTURES / "dryad_idle.g3d")
+    model = read_g3d(G3D_FIXTURES / "treant_idle.g3d")
     groups = texture_groups(model, lambda name: Path("/tex") / name)
-    assert len(groups) == 2, "dryad fixture must split into two texture groups"
+    assert len(groups) == 2, "treant fixture must split into two texture groups"
     rig = build_rig(model, groups, 4, "test_root")
     converter = MeshConverter()
     result = converter.convert_g3d_to_dae(
-        G3D_FIXTURES / "dryad_idle.g3d", tmp_path, "elves", rig=rig
+        G3D_FIXTURES / "treant_idle.g3d", tmp_path, "demo", rig=rig
     )
     assert len(result.mesh_daes) == 2
     root = etree.parse(str(result.mesh_daes[1])).getroot()
@@ -558,3 +560,55 @@ def test_multi_group_skin_matches_group_geometry(tmp_path: Path) -> None:
     assert weights_count == geometry_verts, (
         f"skin weights ({weights_count}) must cover group geometry ({geometry_verts})"
     )
+
+
+def test_align_points_translation() -> None:
+    """_align_points finds the rigid transform mapping src→dst."""
+    from megaglest_to_0ad.converters.rig import _align_points, _apply_rigid
+
+    src = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0], [2.0, 6.0, 1.0]]
+    offset = [5.0, -3.0, 2.0]
+    dst = [[v[i] + offset[i] for i in range(3)] for v in src]
+    rot, t = _align_points(src, dst)
+    for s, d in zip(src, dst):
+        result = _apply_rigid(rot, t, s)
+        for axis in range(3):
+            assert result[axis] == pytest.approx(d[axis], abs=1e-5)
+
+
+def test_align_points_rotation() -> None:
+    """_align_points handles a 90° rotation around Z."""
+    from megaglest_to_0ad.converters.rig import _align_points, _apply_rigid
+
+    src = [[2.0, 0.0, 0.0], [0.0, 3.0, 0.0], [1.0, 4.0, 0.0], [3.0, 1.0, 0.0]]
+    # 90° CCW around Z: (x,y,z) → (-y,x,z)
+    dst = [[0.0, 2.0, 0.0], [-3.0, 0.0, 0.0], [-4.0, 1.0, 0.0], [-1.0, 3.0, 0.0]]
+    rot, t = _align_points(src, dst)
+    for s, d in zip(src, dst):
+        result = _apply_rigid(rot, t, s)
+        for axis in range(3):
+            assert result[axis] == pytest.approx(d[axis], abs=1e-5)
+
+
+def test_fit_group_frames_aligns_offset_model() -> None:
+    """Cross-model alignment removes rest-pose offset for foreign models."""
+    from megaglest_to_0ad.converters.rig import build_rig, fit_group_frames
+
+    model = read_g3d(G3D_FIXTURES / "treant_idle.g3d")
+    groups = [list(range(len(model.meshes)))]
+    rig = build_rig(model, groups, 7, "test_root")
+
+    # Same model → use_base_weights=True: frame 0 must be identity.
+    frames_same = fit_group_frames(model, model, rig, use_base_weights=True)
+    for r, _t in frames_same[0]:
+        assert r == pytest.approx([1, 0, 0, 0, 1, 0, 0, 0, 1], abs=1e-6)
+
+    # Foreign model (same data, but use_base_weights=False): frame 0 still
+    # identity, and frame 1 transforms are finite (no NaN/inf from bad fits).
+    frames_foreign = fit_group_frames(model, model, rig, use_base_weights=False)
+    for r, _t in frames_foreign[0]:
+        assert r == pytest.approx([1, 0, 0, 0, 1, 0, 0, 0, 1], abs=1e-6)
+    for f in range(1, len(frames_foreign)):
+        for r, t in frames_foreign[f]:
+            assert all(math.isfinite(v) for v in r)
+            assert all(math.isfinite(v) for v in t)

@@ -22,18 +22,18 @@ sharing one synthesized joint contract. The engine imports the DAEs as PMD
 
 Animation filenames follow the MegaGlest convention ``{unit}_{skill}.g3d``;
 the skill part (text after the first underscore) names the output DAE
-(``dryad_idle.g3d`` -> ``dryad_idle_idle.dae``).
+(``treant_idle.g3d`` -> ``treant_idle_idle.dae``).
 
 Usage::
 
-    python tools/morph_to_skeletal.py dryad_idle.g3d dryad_attack_ranged.g3d \\
+    python tools/morph_to_skeletal.py treant_idle.g3d treant_attack_ranged.g3d \\
         --output mymod --rig-bones 6
 
 Output (drop ``mymod`` straight into 0 A.D. as a mod):
 
-    mymod/art/meshes/dryad_idle/dryad_idle.dae        (skinned mesh)
-    mymod/art/animation/dryad_idle/dryad_idle_idle.dae
-    mymod/art/animation/dryad_idle/dryad_idle_attack_ranged.dae
+    mymod/art/meshes/treant_idle/treant_idle.dae        (skinned mesh)
+    mymod/art/animation/treant_idle/treant_idle_idle.dae
+    mymod/art/animation/treant_idle/treant_idle_attack_ranged.dae
 
 Actor wiring is left to you: reference the mesh DAE with ``<mesh>`` and each
 animation DAE with ``<animation file=... name=...>`` (paths relative to

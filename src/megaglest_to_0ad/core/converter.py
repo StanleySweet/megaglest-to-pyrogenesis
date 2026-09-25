@@ -181,7 +181,7 @@ def _write_report(
     converted: dict[str, int],
 ) -> Path:
     payload = {
-        "tool": "megaglest-to-0ad",
+        "tool": "megaglest-to-pyrogenesis",
         "version": __version__,
         "pack": {
             "name": pack.name,

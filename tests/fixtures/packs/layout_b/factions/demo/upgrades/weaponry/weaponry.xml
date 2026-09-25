@@ -1,0 +1,18 @@
+<?xml version="1.0" standalone="no"?>
+<upgrade>
+	<image path="images/weaponry.bmp"/>
+	<image-cancel path="../../../cancel.bmp"/>
+	<time value="250"/>
+	<unit-requirements/>
+	<upgrade-requirements/>
+	<resource-requirements>
+		<resource name="gold" amount="200"/>
+		<resource name="wood" amount="100"/>
+	</resource-requirements>
+	<effects>
+		<unit name="grunt"/>
+	</effects>
+	<max-hp value="100" start-percentage="100"/>
+	<armor value="5"/>
+	<attack-strength value="10"/>
+</upgrade>

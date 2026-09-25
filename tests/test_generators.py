@@ -51,8 +51,8 @@ def _unit(
 
 def _stats_with_model(g3d: Path, tmp_path: Path) -> tuple[MediaConversionStats, Path, Path]:
     """MediaConversionStats with one converted model + baseTex entry."""
-    dae = tmp_path / "art" / "meshes" / "elves" / f"{g3d.stem}.dae"
-    png = tmp_path / "art" / "textures" / "units" / "elves" / "skin.png"
+    dae = tmp_path / "art" / "meshes" / "demo" / f"{g3d.stem}.dae"
+    png = tmp_path / "art" / "textures" / "units" / "demo" / "skin.png"
     stats = MediaConversionStats(
         models={g3d: ConvertedMesh(g3d_path=g3d, mesh_daes=[dae])},
         model_texture={g3d: png},
@@ -61,7 +61,7 @@ def _stats_with_model(g3d: Path, tmp_path: Path) -> tuple[MediaConversionStats, 
     return stats, dae, png
 
 
-def _faction_with(tmp_path: Path, units: dict[str, UnitDef], name: str = "elves") -> Faction:
+def _faction_with(tmp_path: Path, units: dict[str, UnitDef], name: str = "demo") -> Faction:
     return Faction(name=name, directory=tmp_path, xml_path=tmp_path / f"{name}.xml", units=units)
 
 
@@ -76,7 +76,7 @@ def test_civ_generator_shape(layout_b_pack: Path, tmp_path: Path) -> None:
 
     pack = discover_pack(layout_b_pack)
     _load_factions(pack, ("all",))
-    faction = pack.factions["elves"]
+    faction = pack.factions["demo"]
     stats = MediaConversionStats(music_files=["theme.ogg"])
 
     civ_path, _ = generate_civ(faction, tmp_path, stats, Settings())
@@ -93,13 +93,13 @@ def test_civ_generator_shape(layout_b_pack: Path, tmp_path: Path) -> None:
         "SkirmishReplacements",
         "SelectableInGameSetup",
     ]
-    assert payload["Code"] == "elves"
+    assert payload["Code"] == "demo"
     assert payload["Music"] == [{"File": "theme.ogg", "Type": "peace"}]
     assert payload["WallSets"] == ["structures/wallset_palisade"]
     # barracks is in starting_units (count 1) and is a building -> TC entry
     assert payload["StartEntities"] == [
-        {"Template": "structures/elves/barracks"},
-        {"Template": "units/elves/elf", "Count": 3},
+        {"Template": "structures/demo/barracks"},
+        {"Template": "units/demo/grunt", "Count": 3},
     ]
     assert payload["SelectableInGameSetup"] is True
 
@@ -107,24 +107,24 @@ def test_civ_generator_shape(layout_b_pack: Path, tmp_path: Path) -> None:
 def test_civ_generator_inserts_town_centre_when_starting_units_have_none(
     tmp_path: Path,
 ) -> None:
-    tc = _unit("tree_of_life", is_building=True, parameters={"size": 2})
+    tc = _unit("great_tree", is_building=True, parameters={"size": 2})
     faction = Faction(
-        name="elves",
+        name="demo",
         directory=tmp_path,
-        xml_path=tmp_path / "elves.xml",
-        starting_units=[("elf", 2)],
-        units={"elf": _unit("elf"), "tree_of_life": tc},
+        xml_path=tmp_path / "demo.xml",
+        starting_units=[("grunt", 2)],
+        units={"grunt": _unit("grunt"), "great_tree": tc},
     )
     civ_path, _ = generate_civ(faction, tmp_path, MediaConversionStats(), Settings())
     payload = json.loads(civ_path.read_text(encoding="utf-8"))
-    assert payload["StartEntities"][0] == {"Template": "structures/elves/tree_of_life"}
+    assert payload["StartEntities"][0] == {"Template": "structures/demo/great_tree"}
 
 
 def test_civ_generator_writes_player_template(tmp_path: Path) -> None:
     faction = Faction(
-        name="elves",
+        name="demo",
         directory=tmp_path,
-        xml_path=tmp_path / "elves.xml",
+        xml_path=tmp_path / "demo.xml",
         starting_units=[],
         units={},
     )
@@ -132,10 +132,10 @@ def test_civ_generator_writes_player_template(tmp_path: Path) -> None:
     root = etree.parse(player_path).getroot()
     assert root.tag == "Entity"
     assert root.get("parent") == "template_player"
-    assert root.find("Identity/Civ").text == "elves"
-    assert root.find("Identity/GenericName").text == "Elves"
-    assert root.find("Identity/Icon").text == "emblems/emblem_elves.png"
-    emblem = tmp_path / "art/textures/ui/session/portraits/emblems/emblem_elves.png"
+    assert root.find("Identity/Civ").text == "demo"
+    assert root.find("Identity/GenericName").text == "Demo"
+    assert root.find("Identity/Icon").text == "emblems/emblem_demo.png"
+    emblem = tmp_path / "art/textures/ui/session/portraits/emblems/emblem_demo.png"
     assert emblem.is_file() and emblem.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
 
 
@@ -146,23 +146,23 @@ def test_civ_generator_writes_player_template(tmp_path: Path) -> None:
 
 def test_actor_generator_writes_actor_referencing_converted_mesh(tmp_path: Path) -> None:
     g3d = G3D_FIXTURES / "gold.g3d"
-    elf = _unit(
-        "elf",
+    grunt = _unit(
+        "grunt",
         skills={"stop": SkillDef(type="stop", name="stop_skill", animation=g3d)},
     )
-    faction = _faction_with(tmp_path, {"elf": elf})
+    faction = _faction_with(tmp_path, {"grunt": grunt})
     stats, dae, png = _stats_with_model(g3d, tmp_path)
 
     written = generate_actors(faction, tmp_path, stats, Settings(target_version="0.29.0"))
 
-    assert [p.name for p in written] == ["elf.xml"]
-    actor_path = tmp_path / "art/actors/units/elves/elf.xml"
+    assert [p.name for p in written] == ["grunt.xml"]
+    actor_path = tmp_path / "art/actors/units/demo/grunt.xml"
     root = etree.parse(actor_path).getroot()
     assert root.tag == "actor" and root.get("version") == "1"
     mesh = root.find("group/variant/mesh")
-    assert mesh is not None and mesh.text == f"elves/{dae.name}"
+    assert mesh is not None and mesh.text == f"demo/{dae.name}"
     texture = root.find("group/variant/textures/texture")
-    assert texture is not None and texture.get("file") == f"units/elves/{png.name}"
+    assert texture is not None and texture.get("file") == f"units/demo/{png.name}"
     assert texture.get("name") == "baseTex"
     slots = {t.get("name") for t in root.findall("group/variant/textures/texture")}
     assert slots == {"baseTex", "normTex", "specTex"}
@@ -175,24 +175,24 @@ def test_actor_generator_writes_actor_referencing_converted_mesh(tmp_path: Path)
 
 def test_actor_material_version_aware(tmp_path: Path) -> None:
     g3d = G3D_FIXTURES / "gold.g3d"
-    elf = _unit("elf", skills={"stop": SkillDef(type="stop", name="s", animation=g3d)})
-    faction = _faction_with(tmp_path, {"elf": elf})
+    grunt = _unit("grunt", skills={"stop": SkillDef(type="stop", name="s", animation=g3d)})
+    faction = _faction_with(tmp_path, {"grunt": grunt})
     stats, _dae, _png = _stats_with_model(g3d, tmp_path)
     generate_actors(faction, tmp_path, stats, Settings(target_version="0.28.0"))
-    root = etree.parse(tmp_path / "art/actors/units/elves/elf.xml").getroot()
+    root = etree.parse(tmp_path / "art/actors/units/demo/grunt.xml").getroot()
     assert root.find("material").text == "player_trans_norm_spec.xml"
 
 
 def test_actor_multi_mesh_emits_props_at_root(tmp_path: Path) -> None:
     g3d = G3D_FIXTURES / "gold.g3d"
-    extra = tmp_path / "art" / "meshes" / "elves" / "gold_1.dae"
-    png = tmp_path / "art" / "textures" / "units" / "elves" / "skin.png"
-    elf = _unit("elf", skills={"stop": SkillDef(type="stop", name="s", animation=g3d)})
-    faction = _faction_with(tmp_path, {"elf": elf})
+    extra = tmp_path / "art" / "meshes" / "demo" / "gold_1.dae"
+    png = tmp_path / "art" / "textures" / "units" / "demo" / "skin.png"
+    grunt = _unit("grunt", skills={"stop": SkillDef(type="stop", name="s", animation=g3d)})
+    faction = _faction_with(tmp_path, {"grunt": grunt})
     stats = MediaConversionStats(
         models={
             g3d: ConvertedMesh(
-                g3d_path=g3d, mesh_daes=[tmp_path / "art/meshes/elves/gold.dae", extra]
+                g3d_path=g3d, mesh_daes=[tmp_path / "art/meshes/demo/gold.dae", extra]
             )
         },
         model_texture={g3d: png},
@@ -200,38 +200,38 @@ def test_actor_multi_mesh_emits_props_at_root(tmp_path: Path) -> None:
 
     written = generate_actors(faction, tmp_path, stats, Settings())
 
-    root = etree.parse(tmp_path / "art/actors/units/elves/elf.xml").getroot()
+    root = etree.parse(tmp_path / "art/actors/units/demo/grunt.xml").getroot()
     # engine actor grammar (0.28 actor.rng) nests <props> inside the base
     # <variant>; actor-level props fail CXeromyces validation
     prop = root.find("group/variant/props/prop")
     assert prop is not None and prop.get("attachpoint") == "root"
-    assert prop.get("actor") == "props/elves/gold_1.xml"
-    prop_actor = tmp_path / "art/actors/props/elves/gold_1.xml"
+    assert prop.get("actor") == "props/demo/gold_1.xml"
+    prop_actor = tmp_path / "art/actors/props/demo/gold_1.xml"
     assert prop_actor in written
     prop_root = etree.parse(prop_actor).getroot()
-    assert prop_root.find("group/variant/mesh").text == "elves/gold_1.dae"
+    assert prop_root.find("group/variant/mesh").text == "demo/gold_1.dae"
     assert (
         prop_root.find("group/variant/textures/texture").get("file")
-        == "units/elves/skin.png"
+        == "units/demo/skin.png"
     )
 
 
 def test_actor_transparent_model_uses_transparent_material(tmp_path: Path) -> None:
     g3d = G3D_FIXTURES / "gold.g3d"
-    elf = _unit("elf", skills={"stop": SkillDef(type="stop", name="s", animation=g3d)})
-    faction = _faction_with(tmp_path, {"elf": elf})
+    grunt = _unit("grunt", skills={"stop": SkillDef(type="stop", name="s", animation=g3d)})
+    faction = _faction_with(tmp_path, {"grunt": grunt})
     stats, _dae, _png = _stats_with_model(g3d, tmp_path)
     stats.transparent_models.add(g3d)
 
     generate_actors(faction, tmp_path, stats, Settings(target_version="0.28.0"))
-    root = etree.parse(tmp_path / "art/actors/units/elves/elf.xml").getroot()
+    root = etree.parse(tmp_path / "art/actors/units/demo/grunt.xml").getroot()
     assert root.find("material").text == "basic_trans_norm_spec.xml"
 
 
 def test_actor_generator_skips_unit_without_model(tmp_path: Path) -> None:
     missing = G3D_FIXTURES / "nope.g3d"
-    elf = _unit("elf", skills={"stop": SkillDef(type="stop", name="s", animation=missing)})
-    faction = _faction_with(tmp_path, {"elf": elf})
+    grunt = _unit("grunt", skills={"stop": SkillDef(type="stop", name="s", animation=missing)})
+    faction = _faction_with(tmp_path, {"grunt": grunt})
     stats = MediaConversionStats()
     written = generate_actors(faction, tmp_path, stats, Settings())
     assert written == []
@@ -243,19 +243,19 @@ def test_actor_generator_skips_unit_without_model(tmp_path: Path) -> None:
 # Templates
 # ---------------------------------------------------------------------------
 def _template_parent(tmp_path: Path, unit: UnitDef) -> str:
-    tc = _unit("tree_of_life", is_building=True)
-    units = {"tree_of_life": tc, unit.name: unit}
+    tc = _unit("great_tree", is_building=True)
+    units = {"great_tree": tc, unit.name: unit}
     faction = _faction_with(tmp_path, units)
     generate_templates(faction, tmp_path, MediaConversionStats(), Settings())
     sub = "structures" if unit.is_building else "units"
     root = etree.parse(
-        tmp_path / "simulation/templates" / sub / "elves" / f"{unit.name}.xml"
+        tmp_path / "simulation/templates" / sub / "demo" / f"{unit.name}.xml"
     ).getroot()
     return root.get("parent")
 
 
 def test_template_parent_selection(tmp_path: Path) -> None:
-    tc = _unit("tree_of_life", is_building=True)
+    tc = _unit("great_tree", is_building=True)
     barracks = _unit("barracks", is_building=True, commands=[CommandDef(type="produce", name="p")])
     forge = _unit("forge", is_building=True, commands=[CommandDef(type="upgrade", name="u")])
     granary = _unit("granary", is_building=True)
@@ -293,15 +293,15 @@ def test_template_parent_selection(tmp_path: Path) -> None:
 
 
 def test_template_unit_stats_scaled(tmp_path: Path) -> None:
-    elf = _unit(
-        "elf",
+    grunt = _unit(
+        "grunt",
         parameters={
             "max_hp": 600,
             "armor": 15,
             "size": 1,
             "height": 2.0,
             "sight": 18,
-            "resource_requirements": {"gold": 100, "grace": 50},
+            "resource_requirements": {"gold": 100, "grace": 3},
         },
         skills={
             "move": SkillDef(type="move", name="m", speed=200),
@@ -312,9 +312,9 @@ def test_template_unit_stats_scaled(tmp_path: Path) -> None:
             ),
         },
     )
-    faction = _faction_with(tmp_path, {"elf": elf})
+    faction = _faction_with(tmp_path, {"grunt": grunt})
     generate_templates(faction, tmp_path, MediaConversionStats(), Settings())
-    root = etree.parse(tmp_path / "simulation/templates/units/elves/elf.xml").getroot()
+    root = etree.parse(tmp_path / "simulation/templates/units/demo/grunt.xml").getroot()
 
     assert root.find("Health/Max").text == "60"  # 600 / 10
     assert root.find("Health/RegenRate").text == "0"
@@ -335,34 +335,104 @@ def test_template_unit_stats_scaled(tmp_path: Path) -> None:
     assert root.find("UnitMotion/PassabilityClass").text == "default"
     assert root.find("Vision/Range").text == "72"  # 18 tiles * 4 m
     assert root.find("Identity/Undeletable").text == "false"
-    assert root.find("Cost/Population").text == "1"
+    # grace maps to population (3 slots), gold -> metal; grace never enters
+    # Cost/Resources
+    assert root.find("Cost/Population").text == "3"
     assert root.find("VisualActor/SilhouetteDisplay").text == "false"
-    # grace dropped, gold -> metal
     resources = root.find("Cost/Resources")
     assert resources.find("metal").text == "100"
     assert resources.find("gold") is None
     assert resources.find("grace") is None
 
 
-def test_template_non_morph_unit_promotes_to_self(tmp_path: Path) -> None:
-    elf = _unit("elf", parameters={"max_hp": 100})
-    faction = _faction_with(tmp_path, {"elf": elf})
+def test_template_unit_without_grace_defaults_to_one_population(tmp_path: Path) -> None:
+    grunt = _unit("grunt", parameters={"resource_requirements": {"wood": 50}})
+    faction = _faction_with(tmp_path, {"grunt": grunt})
     generate_templates(faction, tmp_path, MediaConversionStats(), Settings())
-    root = etree.parse(tmp_path / "simulation/templates/units/elves/elf.xml").getroot()
-    assert root.find("Promotion/Entity").text == "units/elves/elf"
+    root = etree.parse(tmp_path / "simulation/templates/units/demo/grunt.xml").getroot()
+    assert root.find("Cost/Population").text == "1"
+    assert root.find("Population") is None
+
+
+def test_template_flying_unit_has_maxspeed(tmp_path: Path) -> None:
+    """0.28's UnitMotionFlying schema requires MaxSpeed (nonNegativeDecimal)."""
+    gryphon = UnitDef(
+        name="gryphon",
+        directory=Path("/packs/gryphon"),
+        xml_path=Path("/packs/gryphon/gryphon.xml"),
+        is_flying=True,
+        parameters={},
+        skills={"move": SkillDef(type="move", name="m", speed=250)},
+        commands=[],
+    )
+    faction = _faction_with(tmp_path, {"gryphon": gryphon})
+    generate_templates(faction, tmp_path, MediaConversionStats(), Settings())
+    root = etree.parse(tmp_path / "simulation/templates/units/demo/gryphon.xml").getroot()
+    motion = root.find("UnitMotionFlying")
+    assert motion is not None
+    assert motion.find("WalkSpeed").text == motion.find("MaxSpeed").text == "8.3"
+    assert motion.find("PassabilityClass").text == "air"
+
+
+def test_template_building_negative_grace_grants_population_bonus(tmp_path: Path) -> None:
+    """MG buildings with a negative grace cost *provide* grace while they
+    stand; 0 A.D. expresses that as the Population component Bonus (house
+    analog), ordered after Obstruction (engine registration order)."""
+    sanctuary = _unit(
+        "sanctuary",
+        is_building=True,
+        parameters={
+            "time": 125,
+            "max_hp": 2600,
+            "resource_requirements": {"gold": 60, "stone": 20, "wood": 80, "grace": -42},
+        },
+    )
+    faction = _faction_with(tmp_path, {"sanctuary": sanctuary})
+    generate_templates(faction, tmp_path, MediaConversionStats(), Settings())
+    root = etree.parse(tmp_path / "simulation/templates/structures/demo/sanctuary.xml").getroot()
+
+    assert root.find("Cost/Population").text == "0"
+    assert root.find("Cost/Resources/grace") is None
+    bonus = root.find("Population/Bonus")
+    assert bonus is not None and bonus.text == "42"
+    children = [el.tag for el in root]
+    assert children.index("Obstruction") < children.index("Population") < children.index(
+        "VisualActor"
+    )
+
+
+def test_template_unmapped_resource_warns_and_drops(tmp_path: Path) -> None:
+    """Custom resources with no population/0 A.D. mapping surface a per-unit
+    warning instead of vanishing silently."""
+    grunt = _unit("grunt", parameters={"resource_requirements": {"gold": 10, "energy": 7}})
+    faction = _faction_with(tmp_path, {"grunt": grunt})
+    stats = MediaConversionStats()
+    generate_templates(faction, tmp_path, stats, Settings())
+    root = etree.parse(tmp_path / "simulation/templates/units/demo/grunt.xml").getroot()
+    assert root.find("Cost/Resources/energy") is None
+    assert root.find("Cost/Population").text == "1"
+    assert any("energy x7" in w and "grunt" in w for w in stats.warnings)
+
+
+def test_template_non_morph_unit_promotes_to_self(tmp_path: Path) -> None:
+    grunt = _unit("grunt", parameters={"max_hp": 100})
+    faction = _faction_with(tmp_path, {"grunt": grunt})
+    generate_templates(faction, tmp_path, MediaConversionStats(), Settings())
+    root = etree.parse(tmp_path / "simulation/templates/units/demo/grunt.xml").getroot()
+    assert root.find("Promotion/Entity").text == "units/demo/grunt"
     assert root.find("Promotion/RequiredXp").text == "1000000"
 
 
 def test_template_morph_unit_promotes_to_target(tmp_path: Path) -> None:
-    elf = _unit(
-        "elf",
+    grunt = _unit(
+        "grunt",
         parameters={"max_hp": 100},
-        commands=[CommandDef(type="morph", name="m", morph_unit="dryad")],
+        commands=[CommandDef(type="morph", name="m", morph_unit="treant")],
     )
-    faction = _faction_with(tmp_path, {"elf": elf})
+    faction = _faction_with(tmp_path, {"grunt": grunt})
     generate_templates(faction, tmp_path, MediaConversionStats(), Settings())
-    root = etree.parse(tmp_path / "simulation/templates/units/elves/elf.xml").getroot()
-    assert root.find("Promotion/Entity").text == "units/elves/dryad"
+    root = etree.parse(tmp_path / "simulation/templates/units/demo/grunt.xml").getroot()
+    assert root.find("Promotion/Entity").text == "units/demo/treant"
     assert root.find("Promotion/RequiredXp").text == "100"
 
 
@@ -378,7 +448,7 @@ def test_template_building_components(tmp_path: Path) -> None:
             "resource_requirements": {"wood": 300, "gold": 200},
         },
         commands=[
-            CommandDef(type="produce", name="train", produced_unit="elf"),
+            CommandDef(type="produce", name="train", produced_unit="grunt"),
             CommandDef(type="upgrade", name="weaponry"),
             # display name differs from the canonical upgrade id
             CommandDef(type="upgrade", name="gather_wisdom", produced_upgrade="wisdom"),
@@ -386,7 +456,7 @@ def test_template_building_components(tmp_path: Path) -> None:
     )
     faction = _faction_with(tmp_path, {"barracks": barracks})
     generate_templates(faction, tmp_path, MediaConversionStats(), Settings())
-    root = etree.parse(tmp_path / "simulation/templates/structures/elves/barracks.xml").getroot()
+    root = etree.parse(tmp_path / "simulation/templates/structures/demo/barracks.xml").getroot()
 
     assert root.find("Cost/BuildTime").text == "5"  # 50 / 10
     assert root.find("Cost/Population").text == "0"
@@ -396,9 +466,9 @@ def test_template_building_components(tmp_path: Path) -> None:
     assert obstruction.get("width") == "16.0"
     assert root.find("Obstruction/Active").text == "true"
     # <produced-upgrade> wins over the display <name>
-    assert root.find("Researcher/Technologies").text == "elves/weaponry\nelves/wisdom"
-    assert root.find("Trainer/Entities").text == "units/elves/elf"
-    assert root.find("VisualActor/Actor").text == "structures/elves/barracks.xml"
+    assert root.find("Researcher/Technologies").text == "demo/weaponry\ndemo/wisdom"
+    assert root.find("Trainer/Entities").text == "units/demo/grunt"
+    assert root.find("VisualActor/Actor").text == "structures/demo/barracks.xml"
     assert root.find("VisualActor/SilhouetteDisplay").text == "true"
 
 
@@ -406,8 +476,8 @@ def test_template_sound_component(tmp_path: Path) -> None:
     """SoundGroup files are wired to the engine's query keys, not to
     MegaGlest skill names: select from selection-sounds, engine animation
     names (gather_*, death, attack_melee) from skill sounds."""
-    elf = _unit(
-        "elf",
+    grunt = _unit(
+        "grunt",
         skills={
             "harvest": SkillDef(
                 type="harvest",
@@ -423,17 +493,17 @@ def test_template_sound_component(tmp_path: Path) -> None:
             ),
         },
     )
-    elf.selection_sounds = [Path("worker_select1.wav")]
-    faction = _faction_with(tmp_path, {"elf": elf})
+    grunt.selection_sounds = [Path("worker_select1.wav")]
+    faction = _faction_with(tmp_path, {"grunt": grunt})
     generate_templates(faction, tmp_path, MediaConversionStats(), Settings())
-    root = etree.parse(tmp_path / "simulation/templates/units/elves/elf.xml").getroot()
+    root = etree.parse(tmp_path / "simulation/templates/units/demo/grunt.xml").getroot()
 
     groups = root.find("Sound/SoundGroups")
-    assert groups.find("select").text == "groups/elf_select.xml"
-    assert groups.find("death").text == "groups/elf_die.xml"
-    assert groups.find("gather_food").text == "groups/elf_harvest.xml"
-    assert groups.find("gather_wood").text == "groups/elf_harvest.xml"
-    assert groups.find("attack_melee").text == "groups/elf_attack.xml"
+    assert groups.find("select").text == "groups/grunt_select.xml"
+    assert groups.find("death").text == "groups/grunt_die.xml"
+    assert groups.find("gather_food").text == "groups/grunt_harvest.xml"
+    assert groups.find("gather_wood").text == "groups/grunt_harvest.xml"
+    assert groups.find("attack_melee").text == "groups/grunt_attack.xml"
     assert groups.find("attack_ranged") is None  # melee per AttackStats(range=1)
     # components stay in engine registration (alphabetical) order
     tags = [el.tag for el in root]
@@ -444,7 +514,7 @@ def test_template_builder_component(tmp_path: Path) -> None:
     Builder component; without the Entities token list the engine never
     offers the construct command."""
     worker = _unit(
-        "elf",
+        "grunt",
         skills={"build": SkillDef(type="build", name="build")},
     )
     archer = _unit("archer", skills={"attack": SkillDef(type="attack", name="attack")})
@@ -452,18 +522,18 @@ def test_template_builder_component(tmp_path: Path) -> None:
     house = _unit("lore_house", is_building=True)
     faction = _faction_with(
         tmp_path,
-        {"elf": worker, "archer": archer, "forge": forge, "lore_house": house},
+        {"grunt": worker, "archer": archer, "forge": forge, "lore_house": house},
     )
     generate_templates(faction, tmp_path, MediaConversionStats(), Settings())
 
-    elf = etree.parse(tmp_path / "simulation/templates/units/elves/elf.xml").getroot()
-    builder = elf.find("Builder")
+    grunt = etree.parse(tmp_path / "simulation/templates/units/demo/grunt.xml").getroot()
+    builder = grunt.find("Builder")
     assert builder is not None
     assert builder.find("Rate").text == "1.0"
     # sorted token list, one entry per structure, canonical template ids
-    assert builder.find("Entities").text == "structures/elves/forge\nstructures/elves/lore_house"
+    assert builder.find("Entities").text == "structures/demo/forge\nstructures/demo/lore_house"
 
-    archer_root = etree.parse(tmp_path / "simulation/templates/units/elves/archer.xml").getroot()
+    archer_root = etree.parse(tmp_path / "simulation/templates/units/demo/archer.xml").getroot()
     assert archer_root.find("Builder") is None
 
 def test_template_gatherer_component(tmp_path: Path) -> None:
@@ -471,15 +541,15 @@ def test_template_gatherer_component(tmp_path: Path) -> None:
     the worker's fallback parent, carries none); units without the skill
     get nothing."""
     worker = _unit(
-        "elf",
+        "grunt",
         skills={"harvest": SkillDef(type="harvest", name="harvest")},
     )
     archer = _unit("archer", skills={"attack": SkillDef(type="attack", name="attack")})
-    faction = _faction_with(tmp_path, {"elf": worker, "archer": archer})
+    faction = _faction_with(tmp_path, {"grunt": worker, "archer": archer})
     generate_templates(faction, tmp_path, MediaConversionStats(), Settings())
 
-    elf = etree.parse(tmp_path / "simulation/templates/units/elves/elf.xml").getroot()
-    gatherer = elf.find("ResourceGatherer")
+    grunt = etree.parse(tmp_path / "simulation/templates/units/demo/grunt.xml").getroot()
+    gatherer = grunt.find("ResourceGatherer")
     assert gatherer is not None
     assert gatherer.find("MaxDistance").text == "2.0"
     assert gatherer.find("BaseSpeed").text == "1.0"
@@ -493,34 +563,34 @@ def test_template_gatherer_component(tmp_path: Path) -> None:
     assert capacities.find("food").text == "10"
     assert capacities.find("metal").text == "10"
     # component lands in engine registration order
-    tags = [el.tag for el in elf]
+    tags = [el.tag for el in grunt]
     assert tags == sorted(tags)
 
-    archer_root = etree.parse(tmp_path / "simulation/templates/units/elves/archer.xml").getroot()
+    archer_root = etree.parse(tmp_path / "simulation/templates/units/demo/archer.xml").getroot()
     assert archer_root.find("ResourceGatherer") is None
 
 def test_unit_summoner_keeps_trainer(tmp_path: Path) -> None:
-    """A mobile summoner (MG minstrel) is a unit - template under units/ -
+    """A mobile summoner (MG bard) is a unit - template under units/ -
     but keeps its Trainer so its summons stay trainable; the component is
     entity-generic in the engine."""
-    minstrel = _unit(
-        "minstrel",
+    bard = _unit(
+        "bard",
         skills={
             "move": SkillDef(type="move", name="move", speed=150),
             "produce": SkillDef(type="produce", name="summon_skill"),
         },
-        commands=[CommandDef(type="produce", name="summon", produced_unit="dryad")],
+        commands=[CommandDef(type="produce", name="summon", produced_unit="treant")],
     )
-    faction = _faction_with(tmp_path, {"minstrel": minstrel})
+    faction = _faction_with(tmp_path, {"bard": bard})
     generate_templates(faction, tmp_path, MediaConversionStats(), Settings())
 
-    path = tmp_path / "simulation/templates/units/elves/minstrel.xml"
+    path = tmp_path / "simulation/templates/units/demo/bard.xml"
     assert path.is_file()
-    assert not (tmp_path / "simulation/templates/structures/elves/minstrel.xml").exists()
+    assert not (tmp_path / "simulation/templates/structures/demo/bard.xml").exists()
     root = etree.parse(path).getroot()
     trainer = root.find("Trainer")
     assert trainer is not None
-    assert trainer.find("Entities").text == "units/elves/dryad"
+    assert trainer.find("Entities").text == "units/demo/treant"
     tags = [el.tag for el in root]
     assert tags == sorted(tags)
 
@@ -551,7 +621,7 @@ def test_template_attack_projectile(tmp_path: Path) -> None:
     faction = _faction_with(tmp_path, {"archer": archer, "spearman": spearman})
     generate_templates(faction, tmp_path, MediaConversionStats(), Settings())
 
-    archer_root = etree.parse(tmp_path / "simulation/templates/units/elves/archer.xml").getroot()
+    archer_root = etree.parse(tmp_path / "simulation/templates/units/demo/archer.xml").getroot()
     ranged = archer_root.find("Attack/Ranged")
     assert ranged is not None
     assert ranged.find("MaxRange").text == "44.0"  # 11 tiles * 4 m
@@ -564,14 +634,14 @@ def test_template_attack_projectile(tmp_path: Path) -> None:
     # damage type maps pierce -> Pierce
     assert ranged.find("Damage/Pierce").text is not None
 
-    spear_root = etree.parse(tmp_path / "simulation/templates/units/elves/spearman.xml").getroot()
+    spear_root = etree.parse(tmp_path / "simulation/templates/units/demo/spearman.xml").getroot()
     melee = spear_root.find("Attack/Melee")
     assert melee is not None
     assert melee.find("Projectile") is None
 def test_template_footprint_from_model_bbox(tmp_path: Path) -> None:
     """Footprint/Obstruction derive from the base model's measured bbox."""
     g3d = G3D_FIXTURES / "gold.g3d"
-    dae = tmp_path / "art/meshes/elves/gold.dae"
+    dae = tmp_path / "art/meshes/demo/gold.dae"
     hall = _unit(
         "hall",
         is_building=True,
@@ -587,7 +657,7 @@ def test_template_footprint_from_model_bbox(tmp_path: Path) -> None:
         }
     )
     generate_templates(faction, tmp_path, stats, Settings())
-    root = etree.parse(tmp_path / "simulation/templates/structures/elves/hall.xml").getroot()
+    root = etree.parse(tmp_path / "simulation/templates/structures/demo/hall.xml").getroot()
     square = root.find("Footprint/Square")
     assert square.get("width") == "3.5" and square.get("depth") == "2.2"
     assert root.find("Footprint/Height").text == "4.0"
@@ -607,10 +677,10 @@ def test_tech_generator_shape(tmp_path: Path) -> None:
         xml_path=tmp_path / "weaponry.xml",
         time=250,
         image=tmp_path / "weaponry.png",
-        unit_requirements=["elf"],
+        unit_requirements=["grunt"],
         upgrade_requirements=["iron_working"],
         resource_requirements={"gold": 200, "wood": 100},
-        effects=["elf", "ghost"],  # ghost is not a unit -> filtered from affects
+        effects=["grunt", "ghost"],  # ghost is not a unit -> filtered from affects
         stats={
             "max_hp": {"value": 100, "start_percentage": 100},
             "armor": 5,
@@ -618,17 +688,17 @@ def test_tech_generator_shape(tmp_path: Path) -> None:
         },
     )
     faction = Faction(
-        name="elves",
+        name="demo",
         directory=tmp_path,
-        xml_path=tmp_path / "elves.xml",
-        units={"elf": _unit("elf")},
+        xml_path=tmp_path / "demo.xml",
+        units={"grunt": _unit("grunt")},
         upgrades={"weaponry": upgrade},
     )
     written = generate_techs(faction, tmp_path, MediaConversionStats(), Settings())
     assert [p.name for p in written] == ["weaponry.json"]
 
     payload = json.loads(
-        (tmp_path / "simulation/data/technologies/elves/weaponry.json").read_text(encoding="utf-8")
+        (tmp_path / "simulation/data/technologies/demo/weaponry.json").read_text(encoding="utf-8")
     )
     assert list(payload)[:7] == [
         "genericName",
@@ -642,8 +712,8 @@ def test_tech_generator_shape(tmp_path: Path) -> None:
     assert payload["genericName"] == "Weaponry"
     assert payload["cost"] == {"metal": 200, "wood": 100}
     assert payload["requirements"] == {
-        "tech": "elves/iron_working",
-        "entities": ["units/elves/elf"],
+        "tech": "demo/iron_working",
+        "entities": ["units/demo/grunt"],
     }
     assert payload["icon"] == "technologies/weaponry.png"
     assert payload["researchTime"] == 25  # 250 / 10
@@ -651,7 +721,7 @@ def test_tech_generator_shape(tmp_path: Path) -> None:
     assert mods["Health/Max"]["multiply"] == 2.0  # (100 + 100) / 100
     assert mods["Resistance/Entity/Damage/Hack"]["add"] == 5.0
     assert mods["Attack/Melee/Damage/Hack"]["add"] == 1.0  # 10 / 10
-    assert payload["affects"] == ["units/elves/elf"]
+    assert payload["affects"] == ["units/demo/grunt"]
 
 
 def test_tech_generator_health_multiply_uses_start_percentage(tmp_path: Path) -> None:
@@ -662,32 +732,56 @@ def test_tech_generator_health_multiply_uses_start_percentage(tmp_path: Path) ->
         stats={"max_hp": {"value": 100, "start_percentage": 50}},
     )
     faction = Faction(
-        name="elves",
+        name="demo",
         directory=tmp_path,
-        xml_path=tmp_path / "elves.xml",
+        xml_path=tmp_path / "demo.xml",
         upgrades={"training": upgrade},
     )
     generate_techs(faction, tmp_path, MediaConversionStats(), Settings())
     payload = json.loads(
-        (tmp_path / "simulation/data/technologies/elves/training.json").read_text(encoding="utf-8")
+        (tmp_path / "simulation/data/technologies/demo/training.json").read_text(encoding="utf-8")
     )
     # +100% of the 50%-of-base starting HP => back to base max (factor 1.0)
     assert payload["modifications"][0] == {"value": "Health/Max", "multiply": 1.0}
 
 
+def test_tech_grace_cost_warns_and_drops(tmp_path: Path) -> None:
+    """Techs have no population analog, so a grace cost is reported and
+    dropped rather than added to the 0 A.D. cost block."""
+    upgrade = UpgradeDef(
+        name="blessing",
+        directory=tmp_path,
+        xml_path=tmp_path / "blessing.xml",
+        resource_requirements={"gold": 100, "grace": 2},
+    )
+    faction = Faction(
+        name="demo",
+        directory=tmp_path,
+        xml_path=tmp_path / "demo.xml",
+        upgrades={"blessing": upgrade},
+    )
+    stats = MediaConversionStats()
+    generate_techs(faction, tmp_path, stats, Settings())
+    payload = json.loads(
+        (tmp_path / "simulation/data/technologies/demo/blessing.json").read_text(encoding="utf-8")
+    )
+    assert payload["cost"] == {"metal": 100}
+    assert any("grace x2" in w and "blessing" in w for w in stats.warnings)
+
+
 def test_actor_wires_animation_block(tmp_path: Path) -> None:
-    """Rigged units get an <animations> block: name, file, speed, event."""
+    """Rigged units get an <animations> block: name, file, speed, event, id."""
     g3d = G3D_FIXTURES / "gold.g3d"
     stats, _dae, _png = _stats_with_model(g3d, tmp_path)
-    anim_dir = tmp_path / "art" / "animation" / "elves"
+    anim_dir = tmp_path / "art" / "animation" / "demo"
     anim_dir.mkdir(parents=True)
     idle = anim_dir / "gold_stop.dae"
     attack = anim_dir / "gold_attack.dae"
     idle.write_text("<COLLADA/>")
     attack.write_text("<COLLADA/>")
     stats.animations[g3d] = {"idle": idle, "attack_melee": attack}
-    elf = _unit(
-        "elf",
+    grunt = _unit(
+        "grunt",
         skills={
             "stop": SkillDef(type="stop", name="stop_skill", animation=g3d),
             "attack": SkillDef(
@@ -698,21 +792,64 @@ def test_actor_wires_animation_block(tmp_path: Path) -> None:
             ),
         },
     )
-    faction = _faction_with(tmp_path, {"elf": elf})
+    faction = _faction_with(tmp_path, {"grunt": grunt})
     written = generate_actors(faction, tmp_path, stats, Settings(target_version="0.29.0"))
     root = etree.parse(written[0]).getroot()
     animations = root.xpath("//variant/animations/animation")
-    assert [(a.get("name"), a.get("file"), a.get("speed"), a.get("event")) for a in animations] == [
-        ("attack_melee", "elves/gold_attack.dae", "100", "0.5"),
-        ("idle", "elves/gold_stop.dae", "100", None),
+    assert [
+        (a.get("name"), a.get("file"), a.get("speed"), a.get("event"), a.get("id"))
+        for a in animations
+    ] == [
+        ("attack_melee", "demo/gold_attack.dae", "100", "0.5", "attack_melee"),
+        ("idle", "demo/gold_stop.dae", "100", None, "idle"),
     ]
+
+
+def test_actor_prop_animations_share_ids(tmp_path: Path) -> None:
+    """Split-mesh props (non-zero groups) emit the SAME animation ids as
+    the root actor so skinned parts stay synced (PickAnimationID)."""
+    g3d = G3D_FIXTURES / "gold.g3d"
+    stats, dae, _png = _stats_with_model(g3d, tmp_path)
+    anim_dir = tmp_path / "art" / "animation" / "demo"
+    anim_dir.mkdir(parents=True)
+    # root animations plus a split-mesh (prop) animation for group 1
+    root_anim = anim_dir / "gold_idle.dae"
+    root_anim.write_text("<COLLADA/>")
+    stats.animations[g3d] = {"idle": root_anim}
+    prop_dae = tmp_path / "art" / "meshes" / "demo" / "gold_1.dae"
+    prop_dae.parent.mkdir(parents=True, exist_ok=True)
+    prop_dae.write_text("<COLLADA/>")
+    prop_anim = anim_dir / "gold_g02_idle.dae"
+    prop_anim.write_text("<COLLADA/>")
+    stats.prop_animations[g3d] = {1: {"idle": prop_anim}}
+    # give the model a second converted mesh so a prop gets emitted
+    stats.models[g3d] = ConvertedMesh(
+        g3d_path=g3d, mesh_daes=[dae.parent / "gold.dae", prop_dae]
+    )
+    grunt = _unit("grunt", skills={"stop": SkillDef(type="stop", name="s", animation=g3d)})
+    faction = _faction_with(tmp_path, {"grunt": grunt})
+    generate_actors(faction, tmp_path, stats, Settings())
+    root = etree.parse(tmp_path / "art/actors/units/demo/grunt.xml").getroot()
+    root_anims = root.xpath("//variant/animations/animation")
+    assert root_anims, "unit actor should carry animations"
+    for anim in root_anims:
+        assert anim.get("id") == anim.get("name"), "root animation id must equal its name"
+    props = root.xpath("//variant/props/prop")
+    assert props, "expected a prop actor for the split mesh"
+    prop_path = tmp_path / "art" / "actors" / props[0].get("actor")
+    prop_root = etree.parse(prop_path).getroot()
+    prop_anims = prop_root.xpath("//variant/animations/animation")
+    assert prop_anims, "prop actor should carry its own animations"
+    for anim in prop_anims:
+        assert anim.get("id") == anim.get("name")
+        assert anim.get("id") == "idle"
 
 
 def test_actor_omits_animations_for_static_units(tmp_path: Path) -> None:
     g3d = G3D_FIXTURES / "gold.g3d"
     stats, _dae, _png = _stats_with_model(g3d, tmp_path)
-    elf = _unit("elf", skills={"stop": SkillDef(type="stop", name="stop_skill", animation=g3d)})
-    faction = _faction_with(tmp_path, {"elf": elf})
+    grunt = _unit("grunt", skills={"stop": SkillDef(type="stop", name="stop_skill", animation=g3d)})
+    faction = _faction_with(tmp_path, {"grunt": grunt})
     written = generate_actors(faction, tmp_path, stats, Settings(target_version="0.29.0"))
     root = etree.parse(written[0]).getroot()
     assert root.xpath("//animations") == []
@@ -723,21 +860,21 @@ def _building_models(tmp_path: Path) -> tuple[MediaConversionStats, Path, Path, 
     base = G3D_FIXTURES / "gold.g3d"
     cons = G3D_FIXTURES / "house_cons.g3d"
     des = G3D_FIXTURES / "house_des.g3d"
-    png = tmp_path / "art" / "textures" / "units" / "elves" / "skin.png"
+    png = tmp_path / "art" / "textures" / "units" / "demo" / "skin.png"
     stats = MediaConversionStats(
         models={
-            base: ConvertedMesh(g3d_path=base, mesh_daes=[tmp_path / "art/meshes/elves/house.dae"]),
+            base: ConvertedMesh(g3d_path=base, mesh_daes=[tmp_path / "art/meshes/demo/house.dae"]),
             cons: ConvertedMesh(
                 g3d_path=cons,
                 mesh_daes=[
-                    tmp_path / "art/meshes/elves/house_cons_0.dae",
-                    tmp_path / "art/meshes/elves/house_cons_1.dae",
-                    tmp_path / "art/meshes/elves/house_cons_2.dae",
-                    tmp_path / "art/meshes/elves/house_cons_3.dae",
+                    tmp_path / "art/meshes/demo/house_cons_0.dae",
+                    tmp_path / "art/meshes/demo/house_cons_1.dae",
+                    tmp_path / "art/meshes/demo/house_cons_2.dae",
+                    tmp_path / "art/meshes/demo/house_cons_3.dae",
                 ],
             ),
             des: ConvertedMesh(
-                g3d_path=des, mesh_daes=[tmp_path / "art/meshes/elves/house_des.dae"]
+                g3d_path=des, mesh_daes=[tmp_path / "art/meshes/demo/house_des.dae"]
             ),
         },
         model_texture={base: png, cons: png, des: png},
@@ -780,7 +917,7 @@ def test_building_emits_foundation_actor_with_stage_variants(tmp_path: Path) -> 
     stats, base, cons, des = _building_models(tmp_path)
     faction = _faction_with(tmp_path, {"house": _building_unit(base, cons, des)})
     generate_actors(faction, tmp_path, stats, Settings())
-    fndn = tmp_path / "art/actors/structures/elves/fndn_house.xml"
+    fndn = tmp_path / "art/actors/structures/demo/fndn_house.xml"
     root = etree.parse(fndn).getroot()
 
     group = root.xpath("group")[0]
@@ -807,8 +944,8 @@ def test_foundation_actor_single_stage_clamps_all_to_zero(tmp_path: Path) -> Non
     """A single construction mesh (no stages) is used for every health state."""
     base = G3D_FIXTURES / "gold.g3d"
     cons = G3D_FIXTURES / "house_cons.g3d"
-    dae = tmp_path / "art/meshes/elves/house_cons_0.dae"
-    png = tmp_path / "art/textures/units/elves/skin.png"
+    dae = tmp_path / "art/meshes/demo/house_cons_0.dae"
+    png = tmp_path / "art/textures/units/demo/skin.png"
     stats = MediaConversionStats(
         models={
             base: ConvertedMesh(g3d_path=base, mesh_daes=[dae]),
@@ -826,7 +963,7 @@ def test_foundation_actor_single_stage_clamps_all_to_zero(tmp_path: Path) -> Non
     )
     faction = _faction_with(tmp_path, {"house": unit})
     generate_actors(faction, tmp_path, stats, Settings())
-    root = etree.parse(tmp_path / "art/actors/structures/elves/fndn_house.xml").getroot()
+    root = etree.parse(tmp_path / "art/actors/structures/demo/fndn_house.xml").getroot()
     group = root.xpath("group")[0]
     for variant in group.xpath("variant[@name!='death']"):
         assert variant.xpath("mesh")[0].text.endswith("house_cons_0.dae")
@@ -838,18 +975,18 @@ def test_foundation_actor_five_stages_starts_at_earliest(tmp_path: Path) -> None
     Foundation.js begins at 1 HP) maps to stage 0, alive to the newest."""
     base = G3D_FIXTURES / "gold.g3d"
     cons = G3D_FIXTURES / "house_cons.g3d"
-    png = tmp_path / "art/textures/units/elves/skin.png"
+    png = tmp_path / "art/textures/units/demo/skin.png"
     stats = MediaConversionStats(
         models={
-            base: ConvertedMesh(g3d_path=base, mesh_daes=[tmp_path / "art/meshes/elves/house.dae"]),
+            base: ConvertedMesh(g3d_path=base, mesh_daes=[tmp_path / "art/meshes/demo/house.dae"]),
             cons: ConvertedMesh(
                 g3d_path=cons,
                 mesh_daes=[
-                    tmp_path / "art/meshes/elves/house_cons_0.dae",
-                    tmp_path / "art/meshes/elves/house_cons_1.dae",
-                    tmp_path / "art/meshes/elves/house_cons_2.dae",
-                    tmp_path / "art/meshes/elves/house_cons_3.dae",
-                    tmp_path / "art/meshes/elves/house_cons_4.dae",
+                    tmp_path / "art/meshes/demo/house_cons_0.dae",
+                    tmp_path / "art/meshes/demo/house_cons_1.dae",
+                    tmp_path / "art/meshes/demo/house_cons_2.dae",
+                    tmp_path / "art/meshes/demo/house_cons_3.dae",
+                    tmp_path / "art/meshes/demo/house_cons_4.dae",
                 ],
             ),
         },
@@ -867,7 +1004,7 @@ def test_foundation_actor_five_stages_starts_at_earliest(tmp_path: Path) -> None
         )},
     )
     generate_actors(faction, tmp_path, stats, Settings())
-    root = etree.parse(tmp_path / "art/actors/structures/elves/fndn_house.xml").getroot()
+    root = etree.parse(tmp_path / "art/actors/structures/demo/fndn_house.xml").getroot()
     by_name = {v.get("name"): v for v in root.xpath("group")[0].xpath("variant")}
     assert by_name["heavydamage"].xpath("mesh")[0].text.endswith("house_cons_0.dae")
     assert by_name["mediumdamage"].xpath("mesh")[0].text.endswith("house_cons_2.dae")
@@ -879,27 +1016,27 @@ def test_prop_actor_uses_its_own_texture_group(tmp_path: Path) -> None:
     """Extra-mesh prop actors read mesh_textures (per-DAE), not the model's
     first texture."""
     g3d = G3D_FIXTURES / "gold.g3d"
-    dae = tmp_path / "art/meshes/elves/gold.dae"
-    extra = tmp_path / "art/meshes/elves/gold_1.dae"
-    skin = tmp_path / "art/textures/units/elves/skin.png"
-    roof = tmp_path / "art/textures/units/elves/roof.png"
+    dae = tmp_path / "art/meshes/demo/gold.dae"
+    extra = tmp_path / "art/meshes/demo/gold_1.dae"
+    skin = tmp_path / "art/textures/units/demo/skin.png"
+    roof = tmp_path / "art/textures/units/demo/roof.png"
     stats = MediaConversionStats(
         models={g3d: ConvertedMesh(g3d_path=g3d, mesh_daes=[dae, extra])},
         model_texture={g3d: skin},
         mesh_textures={extra: roof},
     )
-    elf = _unit("elf", skills={"stop": SkillDef(type="stop", name="s", animation=g3d)})
-    faction = _faction_with(tmp_path, {"elf": elf})
+    grunt = _unit("grunt", skills={"stop": SkillDef(type="stop", name="s", animation=g3d)})
+    faction = _faction_with(tmp_path, {"grunt": grunt})
     generate_actors(faction, tmp_path, stats, Settings())
-    prop = etree.parse(tmp_path / "art/actors/props/elves/gold_1.xml").getroot()
+    prop = etree.parse(tmp_path / "art/actors/props/demo/gold_1.xml").getroot()
     assert prop.xpath("group/variant/textures/texture")[0].get("file").endswith("roof.png")
 
 
 def test_template_building_references_foundation_actor(tmp_path: Path) -> None:
     base = G3D_FIXTURES / "gold.g3d"
     cons = G3D_FIXTURES / "house_cons.g3d"
-    dae = tmp_path / "art/meshes/elves/house.dae"
-    cons_dae = tmp_path / "art/meshes/elves/house_cons_0.dae"
+    dae = tmp_path / "art/meshes/demo/house.dae"
+    cons_dae = tmp_path / "art/meshes/demo/house_cons_0.dae"
     stats = MediaConversionStats(
         models={
             base: ConvertedMesh(g3d_path=base, mesh_daes=[dae]),
@@ -916,8 +1053,8 @@ def test_template_building_references_foundation_actor(tmp_path: Path) -> None:
     )
     faction = _faction_with(tmp_path, {"house": house})
     generate_templates(faction, tmp_path, stats, Settings())
-    root = etree.parse(tmp_path / "simulation/templates/structures/elves/house.xml").getroot()
-    assert root.find("VisualActor/FoundationActor").text == "structures/elves/fndn_house.xml"
+    root = etree.parse(tmp_path / "simulation/templates/structures/demo/house.xml").getroot()
+    assert root.find("VisualActor/FoundationActor").text == "structures/demo/fndn_house.xml"
 
 
 def test_template_building_without_cons_omits_foundation_actor(tmp_path: Path) -> None:
@@ -926,5 +1063,5 @@ def test_template_building_without_cons_omits_foundation_actor(tmp_path: Path) -
     house = _unit("house", is_building=True)
     faction = _faction_with(tmp_path, {"house": house})
     generate_templates(faction, tmp_path, MediaConversionStats(), Settings())
-    root = etree.parse(tmp_path / "simulation/templates/structures/elves/house.xml").getroot()
+    root = etree.parse(tmp_path / "simulation/templates/structures/demo/house.xml").getroot()
     assert root.find("VisualActor/FoundationActor") is None

@@ -23,9 +23,9 @@ def test_discover_flat_layout(layout_b_pack: Path) -> None:
 def test_discover_classic_layout(layout_a_pack: Path) -> None:
     pack = discover_pack(layout_a_pack)
     assert pack.layout is LayoutKind.CLASSIC
-    assert pack.name == "magitech"
-    assert pack.tech_root == layout_a_pack / "techs" / "magitech"
-    assert pack.factions_dir == layout_a_pack / "techs" / "magitech" / "factions"
+    assert pack.name == "demo_tech"
+    assert pack.tech_root == layout_a_pack / "techs" / "demo_tech"
+    assert pack.factions_dir == layout_a_pack / "techs" / "demo_tech" / "factions"
 
 
 def test_tech_tree_parsed(layout_b_pack: Path) -> None:

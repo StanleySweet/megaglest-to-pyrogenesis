@@ -21,13 +21,14 @@ TIME_SCALE = 10.0
 SPEED_SCALE = 30.0
 TILE_METERS = 4.0
 
-# MegaGlest resource -> 0 A.D. resource. ``grace`` has no 0 A.D. analog and
-# is dropped by the callers.
+# MegaGlest resource -> 0 A.D. resource. ``grace`` is not a tradable 0 A.D.
+# resource; it maps to population instead (see ``grace_amount``), so it never
+# enters ``Cost/Resources``.
 RESOURCE_MAP = {"gold": "metal", "wood": "wood", "stone": "stone", "food": "food"}
 
 
 def humanize_name(raw: str) -> str:
-    """``grey_elf_archer`` -> ``Grey Elf Archer`` (template/tech names)."""
+    """``skirmisher`` -> ``Skirmisher`` (template/tech names)."""
     return re.sub(r"[_-]+", " ", raw).strip().title()
 
 
@@ -44,13 +45,48 @@ def material_for(target_version: str) -> str:
 
 
 def resource_cost(resources: dict[str, int]) -> dict[str, int]:
-    """Map MG resources to 0 A.D. resources, dropping zeros and ``grace``."""
+    """Map MG resources to 0 A.D. resources, dropping zeros and ``grace``.
+
+    ``grace`` is handled by the template layer as population (see
+    :func:`grace_amount`); every other custom resource is dropped and
+    reported by :func:`unmapped_resources`.
+    """
     out: dict[str, int] = {}
     for mg_name, amount in resources.items():
         oad_name = RESOURCE_MAP.get(mg_name)
         if oad_name is None or amount <= 0:
             continue
         out[oad_name] = amount
+    return out
+
+
+def grace_amount(resources: dict[str, int]) -> int:
+    """The MegaGlest ``grace`` requirement, mapped to 0 A.D. population.
+
+    Positive on a unit = the population slots it consumes; negative on a
+    building = population cap added while it stands. Returns 0 when unused.
+    """
+    return int(resources.get("grace", 0))
+
+
+def unmapped_resources(
+    resources: dict[str, int], *, grace_is_mapped: bool = False
+) -> dict[str, int]:
+    """Custom MG resources with no 0 A.D. analog, for conversion warnings.
+
+    ``grace`` maps to population for unit/building templates, so pass
+    ``grace_is_mapped=True`` there; in tech costs and starting resources it
+    has no analog and is reported too.
+    """
+    out: dict[str, int] = {}
+    for name, amount in resources.items():
+        if name in RESOURCE_MAP:
+            continue
+        if name == "grace" and grace_is_mapped:
+            continue
+        if amount == 0:
+            continue
+        out[name] = amount
     return out
 
 

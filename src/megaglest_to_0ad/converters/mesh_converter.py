@@ -347,6 +347,7 @@ class MeshConverter:
         anim_speed: float,
         loop: bool,
         use_base_weights: bool | None = None,
+        group_index: int = 0,
     ) -> None:
         """Write one self-contained animation DAE for ``anim_model``.
 
@@ -356,25 +357,31 @@ class MeshConverter:
         supplies the per-frame poses; its vertices are assigned to the rig's
         clusters by rest proximity (``fit_group_frames``). Keyframe spacing
         encodes ``anim-speed`` (100 / speed seconds per cycle, loop-closed).
+
+        ``group_index`` selects which rig group's geometry/weights to use
+        (default 0 for the base actor; non-zero for prop groups whose
+        texture-split DAEs also need animation data).
         """
         root = _new_collada_root()
         _add_asset(root, civ)
         base = _sanitize_id(path.stem)
         gid = f"{base}-g0"
-        group = rig.groups[0]
+        group = rig.groups[group_index]
         meshes = [base_model.meshes[i] for i in group.mesh_indices]
         _add_merged_geometry(root, gid, meshes)
-        _add_skin(root, gid, rig)
+        _add_skin(root, gid, rig, group_index)
         _add_animations(
             root,
             gid,
             rig,
+            base_model,
             anim_model,
             anim_speed,
             loop,
             use_base_weights=(
                 anim_model is base_model if use_base_weights is None else use_base_weights
             ),
+            group_index=group_index,
         )
         _add_skinned_scene(root, gid, rig)
         _add_scene(root)
@@ -446,7 +453,7 @@ def _add_asset(root: etree._Element, civ: str) -> None:
     now = datetime.now(UTC).strftime(_ISO_FORMAT)
     asset = etree.SubElement(root, _tag("asset"))
     contributor = etree.SubElement(asset, _tag("contributor"))
-    etree.SubElement(contributor, _tag("author")).text = f"megaglest-to-0ad ({civ})"
+    etree.SubElement(contributor, _tag("author")).text = f"megaglest-to-pyrogenesis ({civ})"
     etree.SubElement(contributor, _tag("authoring_tool")).text = "megaglest to pyrogenesis"
     etree.SubElement(asset, _tag("created")).text = now
     etree.SubElement(asset, _tag("modified")).text = now
@@ -827,10 +834,12 @@ def _add_animations(
     root: etree._Element,
     gid: str,
     rig: Rig,
+    base_model: g3dlib.G3DModel,
     anim_model: g3dlib.G3DModel,
     anim_speed: float,
     loop: bool,
     use_base_weights: bool = False,
+    group_index: int = 0,
 ) -> None:
     """One <animation> per joint: time-sampled world transform channels.
 
@@ -839,10 +848,15 @@ def _add_animations(
     closing keyframe with the rest pose so the PSA wraps seamlessly.
     Transforms are per-bone rigid fits (see ``fit_group_frames``).
     """
-    group = rig.groups[0]
-    meshes = [anim_model.meshes[i] for i in group.mesh_indices]
-    frame_count = min(m.frame_count for m in meshes)
-    frames = fit_group_frames(anim_model, rig, use_base_weights=use_base_weights)
+    group = rig.groups[group_index]
+    base_meshes = [base_model.meshes[i] for i in group.mesh_indices]
+    frame_count = min(m.frame_count for m in base_meshes)
+    anim_frame_count = min(m.frame_count for m in anim_model.meshes)
+    if anim_frame_count > 0:
+        frame_count = anim_frame_count
+    frames = fit_group_frames(
+        base_model, anim_model, rig, group_index=group_index, use_base_weights=use_base_weights
+    )
     duration = animation_duration(anim_speed)
 
     times: list[float] = []

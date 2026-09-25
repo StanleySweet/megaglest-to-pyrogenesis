@@ -14,14 +14,14 @@ from megaglest_to_0ad.megaglest.parser import discover_pack
 
 def _inventory_for(layout_b_pack: Path):
     pack = discover_pack(layout_b_pack)
-    pack.factions["elves"] = load_faction(pack, pack.factions_dir / "elves")
+    pack.factions["demo"] = load_faction(pack, pack.factions_dir / "demo")
     return build_inventory(pack)
 
 
 def test_inventory_counts(layout_b_pack: Path) -> None:
     inventory = _inventory_for(layout_b_pack)
-    assert len(inventory.meshes) == 3  # elf_walk, elf_stand, barracks
-    assert len(inventory.textures) == 5  # elf.bmp, barracks.bmp, weaponry.bmp, gold.bmp, loading
+    assert len(inventory.meshes) == 3  # grunt_walk, grunt_stand, barracks
+    assert len(inventory.textures) == 6  # grunt, barracks, weaponry, cancel, gold, loading
     assert len(inventory.sounds) == 2  # ack1.wav, shared_attack.wav
     assert len(inventory.music) == 1  # theme.ogg
     assert len(inventory.maps) == 0

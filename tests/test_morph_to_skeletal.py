@@ -8,7 +8,7 @@ from pathlib import Path
 from lxml import etree
 
 _NS = {"c": "http://www.collada.org/2005/11/COLLADASchema"}
-_FIXTURE = Path(__file__).parent / "fixtures/g3d/dryad_idle.g3d"
+_FIXTURE = Path(__file__).parent / "fixtures/g3d/treant_idle.g3d"
 _SCRIPT = Path(__file__).resolve().parents[1] / "tools" / "morph_to_skeletal.py"
 
 
@@ -27,10 +27,10 @@ def test_morph_to_skeletal_writes_skinned_mesh_and_skeletal_anim(tmp_path: Path)
     rc = module.main([str(_FIXTURE), "-o", str(output), "--rig-bones", "6"])
 
     assert rc == 0
-    meshes = sorted((output / "art" / "meshes" / "dryad_idle").glob("*.dae"))
-    anims = sorted((output / "art" / "animation" / "dryad_idle").glob("*.dae"))
+    meshes = sorted((output / "art" / "meshes" / "treant_idle").glob("*.dae"))
+    anims = sorted((output / "art" / "animation" / "treant_idle").glob("*.dae"))
     assert meshes, "mesh DAE(s) written"
-    assert anims == [output / "art" / "animation" / "dryad_idle" / "dryad_idle_idle.dae"]
+    assert anims == [output / "art" / "animation" / "treant_idle" / "treant_idle_idle.dae"]
 
     mesh = etree.parse(meshes[0]).getroot()
     # Skeletal output: a skin controller, never a morph target.

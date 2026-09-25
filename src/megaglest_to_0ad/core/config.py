@@ -28,4 +28,4 @@ class Settings(BaseSettings):
     mod_version: str = "1.0.0"
     oad_public_dir: Path | None = None
     skip_media: bool = False
-    rig_bones: int = 6
+    rig_bones: int = 32

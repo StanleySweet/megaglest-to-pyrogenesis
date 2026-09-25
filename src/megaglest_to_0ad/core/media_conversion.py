@@ -31,6 +31,7 @@ from ..core.config import Settings
 from ..core.errors import ConversionError
 from ..megaglest.civ_loader import Faction, SkillDef, UnitDef
 from ..oad.mod_builder import sanitize_mod_name
+from ..oad.particle_converter import convert_particles
 from ..oad.skeleton_writer import write_skeletons
 
 if TYPE_CHECKING:
@@ -119,6 +120,21 @@ class MediaConversionStats:
     music_files: list[str] = field(default_factory=list)
     # base g3d -> engine animation name -> animation DAE (actor wiring)
     animations: dict[Path, dict[str, Path]] = field(default_factory=dict)
+    # base g3d -> group index -> engine animation name -> animation DAE
+    # (prop actors for texture-split groups need their own animation DAEs)
+    prop_animations: dict[Path, dict[int, dict[str, Path]]] = field(default_factory=dict)
+    # MG particle XML (abs) -> written art/particles/*.xml (abs, inside mod)
+    particle_systems: dict[Path, Path] = field(default_factory=dict)
+    # MG particle texture (abs) -> written art/textures/particles/*.png (abs)
+    particle_textures: dict[Path, Path] = field(default_factory=dict)
+    # projectile mesh g3d (abs) -> projectile actor path (rel to art/actors/)
+    projectile_actor: dict[Path, str] = field(default_factory=dict)
+    # projectile mesh g3d (abs) -> impact actor path (rel to art/actors/)
+    projectile_impact_actor: dict[Path, str] = field(default_factory=dict)
+    # MG projectile particle XML (abs) -> projectile actor path (rel to art/actors/)
+    projectile_actor_by_particle: dict[Path, str] = field(default_factory=dict)
+    # unit name -> list of particle actor paths (rel to art/actors/) to attach
+    unit_particle_props: dict[str, list[str]] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +224,7 @@ class _AnimTask:
     use_base_weights: bool
     unit_name: str
     anim_name: str
+    group_index: int = 0
 
 
 @dataclass
@@ -237,6 +254,7 @@ def _convert_animation_task(task: _AnimTask) -> _AnimTaskResult:
             task.anim_speed,
             loop=task.loop,
             use_base_weights=task.use_base_weights,
+            group_index=task.group_index,
         )
         result.ok = True
     except ConversionError as exc:
@@ -405,7 +423,15 @@ def convert_faction_media(
         # to the process pool below, one model per worker.
         if is_base and _is_animated(model):
             group_vertices = sum(model.meshes[i].vertex_count for i in groups[0])
-            bone_count = max(2, min(settings.rig_bones, group_vertices // _VERTICES_PER_BONE))
+            # Scale bones with model complexity: more vertices need more
+            # rigid parts to avoid Kabsch distortion.  The old formula
+            # capped at rig_bones (6) which was far too few for large
+            # models (ent: 2465 vertices → 6 bones → ~493 vertices per
+            # Kabsch fit → severe distortion).
+            bone_count = max(
+                4,
+                min(settings.rig_bones, group_vertices // _VERTICES_PER_BONE + 2),
+            )
             root_name = f"{civ}_{mesh_stem}_root"
         else:
             bone_count = 0
@@ -457,6 +483,7 @@ def convert_faction_media(
     _convert_tech_portraits(faction, tech_portraits_dir, texture_converter, mod_dir, stats)
     _convert_sounds(faction, sfx_dir, groups_dir, audio_converter, mod_dir, stats, written)
     _convert_music(faction, music_dir, audio_converter, mod_dir, stats, written)
+    convert_particles(faction, mod_dir, settings, stats)
 
     for warning in stats.warnings:
         LOGGER.warning("media: %s", warning)
@@ -493,18 +520,19 @@ def _convert_animations(
     rigs: dict[Path, Rig],
     rig_stems: dict[Path, str],
 ) -> None:
-    """One animation DAE per unit skill, per rigged base model.
+    """One animation DAE per unit skill, per rigged base model, per group.
 
-    Each DAE reuses the base model's group-0 geometry + skin and adds the
+    Each DAE reuses the base model's group geometry + skin and adds the
     skill model's per-frame joint transforms (``write_animation_dae``).
-    Files are deduped by (base stem, key) — units sharing a base model
-    share its animation files; a conflicting second source warns and loses.
-    Emit decisions are made sequentially (deterministic first-wins); the
-    DAE writes themselves run in the process pool.
+    Files are deduped by (base stem, group_index, key) — units sharing a
+    base model share its animation files; a conflicting second source warns
+    and loses.  Group-0 animations go to ``stats.animations`` (the main
+    actor); non-zero groups go to ``stats.prop_animations`` (prop actors
+    for texture-split meshes like the hedir sword).
     """
     anim_dir.mkdir(parents=True, exist_ok=True)
     tasks: list[_AnimTask] = []
-    paths: dict[tuple[str, str], Path] = {}
+    paths: dict[tuple[str, int, str], Path] = {}
     for unit in faction.units.values():
         base = _first_skill_model(unit, model_cache)
         rig = rigs.get(base) if base is not None else None
@@ -518,18 +546,10 @@ def _convert_animations(
             anim_model = model_cache.get(skill.animation.resolve())
             if anim_model is None:
                 continue
-            group = rig.groups[0]
-            if len(anim_model.meshes) <= max(group.mesh_indices):
+            if len(anim_model.meshes) <= max(rig.groups[0].mesh_indices):
                 stats.warnings.append(
                     f"{unit.name}: {skill.animation.name} has fewer meshes than the base "
                     "model; animation skipped"
-                )
-                continue
-            frame_count = min(anim_model.meshes[i].frame_count for i in group.mesh_indices)
-            if frame_count < 2:
-                stats.warnings.append(
-                    f"{unit.name}: {skill.animation.name} has {frame_count} frame(s); "
-                    "animation skipped"
                 )
                 continue
             names = engine_animation_names(skill)
@@ -539,39 +559,56 @@ def _convert_animations(
                 keys = [skill.type]
             else:
                 continue
-            for key in keys:
-                dedupe_key = (base_stem, key)
-                if dedupe_key in paths:
-                    # Units sharing a base model share its animation files;
-                    # a conflicting second source loses (first wins).
+            # Generate animation DAEs for every rigged group (group 0 is
+            # the main actor; non-zero groups are texture-split props like
+            # the hedir sword that need their own animation DAEs).
+            for gi in range(len(rig.groups)):
+                group = rig.groups[gi]
+                if len(anim_model.meshes) <= max(group.mesh_indices):
                     continue
-                paths[dedupe_key] = anim_dir / f"{base_stem}_{key}.dae"
-                tasks.append(
-                    _AnimTask(
-                        base_path=base,
-                        anim_path=skill.animation.resolve(),
-                        base_stem=base_stem,
-                        key=key,
-                        names=names,
-                        rig=rig,
-                        civ=civ,
-                        output=paths[dedupe_key],
-                        anim_speed=skill.anim_speed,
-                        loop=skill.type in {"stop", "move"},
-                        use_base_weights=anim_model is base_model,
-                        unit_name=unit.name,
-                        anim_name=skill.animation.name,
-                    )
+                frame_count = min(
+                    anim_model.meshes[i].frame_count for i in group.mesh_indices
                 )
+                if frame_count < 2:
+                    continue
+                for key in keys:
+                    dedupe_key = (base_stem, gi, key)
+                    if dedupe_key in paths:
+                        continue
+                    suffix = f"_g{gi + 1:02d}_{key}" if gi > 0 else f"_{key}"
+                    paths[dedupe_key] = anim_dir / f"{base_stem}{suffix}.dae"
+                    tasks.append(
+                        _AnimTask(
+                            base_path=base,
+                            anim_path=skill.animation.resolve(),
+                            base_stem=base_stem,
+                            key=key,
+                            names=names,
+                            rig=rig,
+                            civ=civ,
+                            output=paths[dedupe_key],
+                            anim_speed=skill.anim_speed,
+                            loop=skill.type in {"stop", "move"},
+                            use_base_weights=anim_model is base_model,
+                            unit_name=unit.name,
+                            anim_name=skill.animation.name,
+                            group_index=gi,
+                        )
+                    )
     for task, result in _run_tasks(_convert_animation_task, tasks):
         stats.warnings.extend(result.warnings)
         if not result.ok:
             continue
-        path = paths[(task.base_stem, task.key)]
+        path = paths[(task.base_stem, task.group_index, task.key)]
         stats.animation_count += 1
         stats.generated.append(_rel(mod_dir, path))
         if task.names:
-            stats.animations.setdefault(task.base_path, {})[task.key] = path
+            if task.group_index == 0:
+                stats.animations.setdefault(task.base_path, {})[task.key] = path
+            else:
+                stats.prop_animations.setdefault(task.base_path, {}).setdefault(
+                    task.group_index, {}
+                )[task.key] = path
 
 
 # ---------------------------------------------------------------------------

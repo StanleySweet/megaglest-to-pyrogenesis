@@ -32,14 +32,14 @@ def _actor(
     mesh = etree.SubElement(variant, "mesh")
     mesh.text = f"{name}.dae"
     textures = etree.SubElement(variant, "textures")
-    etree.SubElement(textures, "texture", file=f"units/elves/{name}.png", name="baseTex")
+    etree.SubElement(textures, "texture", file=f"units/demo/{name}.png", name="baseTex")
     if norm is not None:
         etree.SubElement(textures, "texture", file=norm, name="normTex")
     if spec is not None:
         etree.SubElement(textures, "texture", file=spec, name="specTex")
     material_node = etree.SubElement(root, "material")
     material_node.text = material
-    path = mod / "art/actors/units/elves" / f"{name}.xml"
+    path = mod / "art/actors/units/demo" / f"{name}.xml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(etree.tostring(root, xml_declaration=True, encoding="utf-8"))
     return path
@@ -49,7 +49,7 @@ def _norm_png(mod: Path, name: str, alpha: int) -> Path:
     """Write a normTex PNG whose alpha channel is uniformly ``alpha``."""
     from PIL import Image
 
-    path = mod / "art/textures/skins/units/elves" / name
+    path = mod / "art/textures/skins/units/demo" / name
     path.parent.mkdir(parents=True, exist_ok=True)
     Image.new("RGBA", (4, 4), (128, 128, 255, alpha)).save(path)
     return path
@@ -68,7 +68,7 @@ def _upgrade(mod: Path, warnings: list[str]) -> int:
 
 
 def _skin(mod: Path, name: str) -> Path:
-    path = mod / "art/textures/skins/units/elves" / name
+    path = mod / "art/textures/skins/units/demo" / name
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(b"png")
     return path
@@ -97,7 +97,7 @@ def test_upgrade_renames_four_spec_materials_and_fills_slots(tmp_path: Path) -> 
         "d": "player_trans_norm_spec.xml",
     }
     for name, material in expected.items():
-        root = _read(mod / "art/actors/units/elves" / f"{name}.xml")
+        root = _read(mod / "art/actors/units/demo" / f"{name}.xml")
         assert root.find("material").text == material
         slots = {
             t.get("name"): t.get("file")
@@ -111,8 +111,8 @@ def test_upgrade_renames_four_spec_materials_and_fills_slots(tmp_path: Path) -> 
 def test_upgrade_uses_parallax_when_normtex_has_alpha(tmp_path: Path) -> None:
     module = _load_script()
     mod = tmp_path / "mod"
-    _actor(mod, "alpha", "no_trans_spec.xml", norm="units/elves/norm_hm.png")
-    _actor(mod, "flat", "no_trans_spec.xml", norm="units/elves/norm_flat.png")
+    _actor(mod, "alpha", "no_trans_spec.xml", norm="units/demo/norm_hm.png")
+    _actor(mod, "flat", "no_trans_spec.xml", norm="units/demo/norm_flat.png")
     _norm_png(mod, "norm_hm.png", alpha=0)
     _norm_png(mod, "norm_flat.png", alpha=255)
     _skin(mod, "alpha.png")
@@ -122,10 +122,10 @@ def test_upgrade_uses_parallax_when_normtex_has_alpha(tmp_path: Path) -> None:
     for path in sorted((mod / "art/actors").rglob("*.xml")):
         module.upgrade_file(path, mod, warnings)
 
-    assert _read(mod / "art/actors/units/elves/alpha.xml").find("material").text == (
+    assert _read(mod / "art/actors/units/demo/alpha.xml").find("material").text == (
         "no_trans_parallax_spec.xml"
     )
-    assert _read(mod / "art/actors/units/elves/flat.xml").find("material").text == (
+    assert _read(mod / "art/actors/units/demo/flat.xml").find("material").text == (
         "no_trans_norm_spec.xml"
     )
 
@@ -140,7 +140,7 @@ def test_upgrade_warns_unknown_material_and_missing_assets(tmp_path: Path) -> No
     for path in sorted((mod / "art/actors").rglob("*.xml")):
         module.upgrade_file(path, mod, warnings)
 
-    root = _read(mod / "art/actors/units/elves/weird.xml")
+    root = _read(mod / "art/actors/units/demo/weird.xml")
     assert root.find("material").text == "mystery_spec.xml"  # untouched
     assert any("unknown material 'mystery_spec.xml'" in w for w in warnings)
 

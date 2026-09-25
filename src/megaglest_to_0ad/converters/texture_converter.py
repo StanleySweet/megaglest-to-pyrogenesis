@@ -14,7 +14,7 @@ _TEXTURE_EXTS = (".tga", ".bmp", ".png", ".jpg", ".jpeg")
 def texture_stem(name: str) -> str:
     """File stem with repeated texture extensions collapsed.
 
-    Some packs double the extension (``texture_ashes_magic.tga.tga``); the
+    Some packs double the extension (``texture_spark.tga.tga``); the
     on-disk file carries a single suffix, so the doubled one is stripped.
     """
     stem = name

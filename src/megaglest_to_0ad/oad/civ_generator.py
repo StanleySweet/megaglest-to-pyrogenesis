@@ -8,6 +8,7 @@ SkirmishReplacements, SelectableInGameSetup.
 from __future__ import annotations
 
 import json
+import logging
 import struct
 import zlib
 from pathlib import Path
@@ -17,8 +18,10 @@ from lxml import etree
 from ..core.config import Settings
 from ..core.media_conversion import MediaConversionStats
 from ..megaglest.civ_loader import Faction
-from .common import humanize_name, town_centre_candidate
+from .common import humanize_name, town_centre_candidate, unmapped_resources
 from .mod_builder import sanitize_mod_name
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _write_emblem(civ: str, mod_dir: Path) -> Path:
@@ -96,6 +99,16 @@ def generate_civ(
     """
     del settings  # civ schema is version-stable
     civ = sanitize_mod_name(faction.name)
+
+    dropped = unmapped_resources(faction.starting_resources, grace_is_mapped=False)
+    if dropped:
+        summary = ", ".join(f"{k} x{v}" for k, v in sorted(dropped.items()))
+        message = (
+            f"starting resources '{summary}' have no 0 A.D. civ-level analog "
+            "(starting wealth/population come from the game setup); dropped"
+        )
+        stats.warnings.append(message)
+        LOGGER.warning("civ %s: %s", civ, message)
 
     start_entities: list[dict[str, object]] = []
     for name, count in faction.starting_units:

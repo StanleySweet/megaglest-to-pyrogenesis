@@ -24,7 +24,7 @@ replicates those two functions:
 Usage::
 
     python tools/validate_templates_merged.py \
-        --mod-dir /tmp/elves_a10_final/elves_a10 \
+        --mod-dir /tmp/demo_a10_final/demo_a10 \
         --public "/Applications/0 A.D..app/Contents/Resources/data/mods/public/public.zip" \
         --rng /tmp/entity.rng
 """

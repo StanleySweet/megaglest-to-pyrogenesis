@@ -1,0 +1,20 @@
+<?xml version="1.0" standalone="no"?>
+<faction>
+	<starting-resources>
+		<resource name="gold" amount="500"/>
+		<resource name="wood" amount="500"/>
+	</starting-resources>
+	<starting-units>
+		<unit name="grunt" amount="3"/>
+		<unit name="barracks" amount="0"/>
+	</starting-units>
+	<ai-behavior>
+		<worker-units>
+			<unit name="grunt" minimum="10"/>
+		</worker-units>
+		<building-units>
+			<unit name="barracks" minimum="1"/>
+		</building-units>
+	</ai-behavior>
+	<music value="true" path="music/theme.ogg"/>
+</faction>

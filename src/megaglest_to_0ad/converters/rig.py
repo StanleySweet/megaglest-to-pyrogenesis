@@ -19,18 +19,22 @@ and every animation DAE so the PMD bone count equals the PSA key count
 models (different skill files) reuse the same joints: their vertices are
 assigned to the nearest cluster rest centroid, then fitted per frame.
 
-All math is deterministic (fixed seeds, closed-form SVD) so reconverts are
-byte-identical.
+All math is deterministic (fixed numpy seed, closed-form SVD) so reconverts
+are byte-identical. The clustering/fitting runs on numpy arrays: the k-means
+feature space is (rest pos + per-frame displacement) so models with many
+animation frames get high-dimensional feature vectors — the pure-Python
+all-pairs loops were the conversion's dominant cost (a 76-frame 2465-vertex
+model took ~36 s; the vectorized kernels run it in well under a second).
 """
 
 from __future__ import annotations
 
-import math
-import random
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import numpy as np
 
 # Vendored importer bootstrap (idempotent; see mesh_converter).
 _VENDOR_G3D_DIR = Path(__file__).resolve().parents[3] / "vendor" / "g3d"
@@ -41,6 +45,11 @@ import g3dlib  # noqa: E402  (vendored third-party module; see vendor/g3d/)
 
 _MAX_INFLUENCES = 4
 _KMEANS_ITERATIONS = 60
+
+_IDENTITY9 = (
+    [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+)
+_ZERO3 = [0.0, 0.0, 0.0]
 
 
 @dataclass
@@ -59,6 +68,8 @@ class RigGroup:
     rest_centroids: list[list[float]] = field(default_factory=list)
     # per base-model vertex: the bone with the largest weight
     assignments: list[int] = field(default_factory=list)
+    # centroid of all rest-position vertices in this group (base-model frame)
+    rest_center: list[float] = field(default_factory=lambda: [0.0, 0.0, 0.0])
 
 
 @dataclass
@@ -110,21 +121,28 @@ def build_rig(
         features, rest = _features(meshes, frame_count)
         k = _cluster_count(len(rest), bone_count - 1)
         centroids, _ = _kmeans(features, k)
-        weights = [_soft_weights(features[i], centroids) for i in range(len(rest))]
-        rest_centroids = [_rest_centroid(rest, weights, b) for b in range(k)]
+        soft_matrix = _soft_weight_matrix(features, centroids)
+        n = len(rest)
+        pair_weights = [
+            _top_influences(soft_matrix[i]) for i in range(soft_matrix.shape[0])
+        ]
+        rest_centroids = _rest_centroids(rest, soft_matrix, pair_weights)
+        rest_center = rest.mean(axis=0).tolist() if n > 0 else [0.0, 0.0, 0.0]
         rig_groups.append(
             RigGroup(
                 mesh_indices=list(group),
-                vertex_weights=weights,
+                vertex_weights=pair_weights,
                 rest_centroids=rest_centroids,
-                assignments=[max(w, key=lambda pair: pair[1])[0] for w in weights],
+                assignments=[int(soft_matrix[i].argmax()) for i in range(n)],
+                rest_center=rest_center,
             )
         )
     return Rig(root_name=root_name, bone_names=names, groups=rig_groups)
 
 
 def fit_group_frames(
-    model: g3dlib.G3DModel,
+    base_model: g3dlib.G3DModel,
+    anim_model: g3dlib.G3DModel,
     rig: Rig,
     group_index: int = 0,
     use_base_weights: bool = False,
@@ -133,45 +151,82 @@ def fit_group_frames(
 
     Returns ``frames`` with ``frames[f][b]`` = ``(R, t)`` (rotation as 9
     row-major floats, translation as 3 floats) for bone ``b`` in frame ``f``.
-    Frame 0 is the rest pose (identity). Vertices of ``model`` are assigned
-    to the rig's clusters by rest-position proximity (for the base model,
-    ``use_base_weights`` reuses the exact k-means weights). Bone 0 (root)
-    carries the whole-model rigid fit; no vertex is weighted to it.
+    Frame 0 is the rest pose (identity).
+
+    ``base_model`` supplies the rest vertices and skin weights (matching the
+    DAE geometry).  ``anim_model`` supplies the per-frame morph targets.
+    When the two models differ, nearest-neighbour displacement transfer maps
+    the animation morphs onto the base model's vertices so that the bone
+    transforms correctly deform the DAE geometry.  ``use_base_weights``
+    reuses the exact k-means weights from rig build (same-model fast path).
+    Bone 0 (root) carries the whole-model rigid fit; no vertex is weighted
+    to it.
     """
     group = rig.groups[group_index]
-    meshes = [model.meshes[i] for i in group.mesh_indices]
-    rest = _concat_rest(meshes)
-    frame_count = min(m.frame_count for m in meshes)
+    base_meshes = [base_model.meshes[i] for i in group.mesh_indices]
+    base_rest = _frame_stack(base_meshes, 1)[0]
+    n_base = len(base_rest)
 
-    # Root: global rigid fit over every vertex (frame 0 = identity).
-    roots = [
-        _kabsch(rest, _frame_positions(meshes, f), [1.0] * len(rest)) for f in range(frame_count)
-    ]
+    same_model = use_base_weights
+    if same_model:
+        anim_meshes = base_meshes
+        anim_rest = base_rest
+        frame_count = min(m.frame_count for m in anim_meshes)
+    else:
+        anim_meshes = anim_model.meshes
+        anim_rest = _frame_stack(anim_meshes, 1)[0]
+        frame_count = min(m.frame_count for m in anim_meshes)
+        if frame_count == 0:
+            frame_count = min(m.frame_count for m in base_meshes)
+
+    anim_stack = _frame_stack(anim_meshes, frame_count)
+
+    # Pre-compute nearest-neighbour mapping for displacement transfer. When
+    # base and anim models differ, each base vertex borrows the displacement
+    # of its closest rest-pose neighbour in the anim model. The mapping is
+    # based on rest positions (static) and reused per frame.
+    nn_map = _nearest_map(anim_rest, base_rest) if not same_model else None
+
+    if nn_map is None:
+        target_stack = anim_stack
+    else:
+        target_stack = (
+            base_rest[None, :, :]
+            + anim_stack[:, nn_map, :]
+            - anim_rest[None, nn_map, :]
+        )
+
     if use_base_weights:
         # Expand the top-4 (bone, weight) pairs into full per-bone vectors so
-        # bone b+1 below reads cluster b's weight.
-        weights = []
-        for vertex_weights in group.vertex_weights:
-            vec = [0.0] * rig.part_count
+        # bone b+1 below reads cluster b's weight (one row per bone, matching
+        # _kabsch_batch's (M, verts) weight layout).
+        weights = np.zeros((rig.part_count, n_base), dtype=np.float64)
+        for i, vertex_weights in enumerate(group.vertex_weights):
             for bone, weight in vertex_weights:
-                vec[bone] = weight
-            weights.append(vec)
+                weights[bone, i] = weight
     else:
-        weights = [_assign_weights(rest[i], group.rest_centroids) for i in range(len(rest))]
-    identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+        weights = _assign_weights(
+            base_rest, np.asarray(group.rest_centroids, dtype=np.float64)
+        ).T
+
+    root_rot, root_t = _kabsch_batch(base_rest, target_stack, np.ones(n_base))
+    bone_rot, bone_t = _kabsch_batch(base_rest, target_stack, weights)
+
     frames: list[list[tuple[list[float], list[float]]]] = []
     for f in range(frame_count):
         if f == 0:
             # Frame 0 IS the rest pose: exact identity (no SVD drift on a
             # symmetric fit), so the base pose renders exactly as authored.
-            frames.append([(identity, [0.0, 0.0, 0.0])] * rig.bone_count)
+            frames.append([(_IDENTITY9, _ZERO3)] * rig.bone_count)
             continue
-        poses = _frame_positions(meshes, f)
-        bone_transforms: list[tuple[list[float], list[float]]] = [
-            roots[f],
-            *[_kabsch(rest, poses, [w[b] for w in weights]) for b in range(rig.part_count)],
+        transforms: list[tuple[list[float], list[float]]] = [
+            (root_rot[0, f].reshape(-1).tolist(), root_t[0, f].tolist())
         ]
-        frames.append(bone_transforms)
+        transforms.extend(
+            (bone_rot[b, f].reshape(-1).tolist(), bone_t[b, f].tolist())
+            for b in range(rig.part_count)
+        )
+        frames.append(transforms)
     return frames
 
 
@@ -191,68 +246,165 @@ def animation_duration(anim_speed: float) -> float:
 
 
 # ---------------------------------------------------------------------------
-# clustering
+# clustering (vectorized)
 # ---------------------------------------------------------------------------
+
+
+def _frame_stack(meshes: Sequence[g3dlib.Mesh], frame_count: int) -> np.ndarray:
+    """Merged per-frame positions as ``(frame_count, total_verts, 3)``.
+
+    Mesh vertices are stored frame-major: ``frame * count * 3`` consecutive
+    floats per mesh (see ``_concat_rest``/``_vertex_at`` in the old layout,
+    preserved by the G3D reader). Frame 0 is the rest pose.
+    """
+    blocks = []
+    for mesh in meshes:
+        count = mesh.vertex_count
+        stride = count * 3
+        grid = (
+            np.asarray(mesh.vertices, dtype=np.float64)[: frame_count * stride]
+            .reshape(frame_count, count, 3)
+        )
+        blocks.append(grid)
+    return np.concatenate(blocks, axis=1)
 
 
 def _features(
     meshes: Sequence[g3dlib.Mesh], frame_count: int
-) -> tuple[list[list[float]], list[list[float]]]:
+) -> tuple[np.ndarray, np.ndarray]:
     """Per-vertex feature vectors: rest position + per-frame displacements.
 
     Dimensions are standardized (mean 0, std 1 per dimension) so rest
-    position and motion contribute comparably; ``rest`` is returned
-    separately for the DAE and for proximity assignment.
+    position and motion contribute comparably; ``rest`` (the frame-0
+    positions) is returned separately for the DAE and for proximity
+    assignment.
     """
-    rest = _concat_rest(meshes)
-    n = len(rest)
-    raw: list[list[float]] = []
-    for i in range(n):
-        point = list(rest[i])
-        for f in range(1, frame_count):
-            pos = _vertex_at(meshes, i, f)
-            for axis in range(3):
-                point.append(pos[axis] - rest[i][axis])
-        raw.append(point)
-    # standardize each dimension
-    dims = len(raw[0])
-    features = [list(row) for row in raw]
-    for d in range(dims):
-        values = [row[d] for row in raw]
-        mean = sum(values) / n
-        variance = sum((v - mean) ** 2 for v in values) / n
-        std = math.sqrt(variance)
-        if std < 1e-9:
-            continue
-        for row in features:
-            row[d] = (row[d] - mean) / std
+    rest = _frame_stack(meshes, 1)[0]
+    if frame_count <= 1:
+        # Static fallback: cluster on the raw rest positions only.
+        return rest.copy(), rest
+    stack = _frame_stack(meshes, frame_count)
+    deltas = stack[1:] - rest  # (frames-1, verts, 3)
+    raw = np.concatenate(
+        [rest, deltas.transpose(1, 0, 2).reshape(len(rest), -1)], axis=1
+    )
+    features = raw.copy()
+    mean = raw.mean(axis=0)
+    variance = raw.var(axis=0)
+    std = np.sqrt(variance)
+    std_ok = std > 1e-9
+    features[:, std_ok] = (raw[:, std_ok] - mean[std_ok]) / std[std_ok]
     return features, rest
 
 
-def _concat_rest(meshes: Sequence[g3dlib.Mesh]) -> list[list[float]]:
-    rest: list[list[float]] = []
-    for mesh in meshes:
-        stride = mesh.vertex_count * 3
-        positions = mesh.vertices[:stride]
-        rest.extend([positions[i], positions[i + 1], positions[i + 2]] for i in range(0, stride, 3))
-    return rest
+def _kmeans(features: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
+    """Deterministic k-means++ over ``features``; returns (centroids, labels)."""
+    # Fresh RNG per call so every build_rig reproduces (the former
+    # ``random.Random(0)`` contract).
+    rng = np.random.default_rng(0)
+    n = len(features)
+    dims = features.shape[1]
+    centroids: list[np.ndarray] = [features[rng.integers(n)].copy()]
+    while len(centroids) < k:
+        pts = np.asarray(centroids)
+        d2 = ((features[:, None, :] - pts[None, :, :]) ** 2).sum(-1)
+        distances = d2.min(-1)
+        total = distances.sum()
+        if total <= 1e-18:
+            centroids.append(features[rng.integers(n)].copy())
+            continue
+        target = rng.random() * total
+        index = int(np.searchsorted(np.cumsum(distances), target, side="left"))
+        centroids.append(features[index].copy())
+
+    centroids_arr: np.ndarray = np.asarray(centroids)
+    labels = np.zeros(n, dtype=np.int64)
+    for _ in range(_KMEANS_ITERATIONS):
+        d2 = ((features[:, None, :] - centroids_arr[None, :, :]) ** 2).sum(-1)
+        best = d2.argmin(-1)
+        if not (best != labels).any():
+            break
+        labels = best
+        sums = np.zeros((k, dims), dtype=np.float64)
+        np.add.at(sums, labels, features)
+        counts = np.bincount(labels, minlength=k)
+        new_centroids = np.where(
+            (counts > 0)[:, None],
+            sums / np.maximum(counts, 1)[:, None],
+            centroids_arr,
+        )
+        centroids_arr = new_centroids
+    return centroids_arr, labels
 
 
-def _vertex_at(meshes: Sequence[g3dlib.Mesh], merged_index: int, frame: int) -> list[float]:
-    """Position of the ``merged_index``-th merged vertex in ``frame``."""
-    offset = 0
-    for mesh in meshes:
-        count = mesh.vertex_count
-        if merged_index < offset + count:
-            stride = count * 3
-            start = frame * stride + (merged_index - offset) * 3
-            return list(mesh.vertices[start : start + 3])
-        offset += count
-    raise IndexError(merged_index)
+def _soft_weight_matrix(
+    features: np.ndarray, centroids: np.ndarray
+) -> np.ndarray:
+    """Soft per-cluster weights for every vertex, ``(verts, k)``.
+
+    Near-hard blending: the exponent -3.0 makes the closest cluster dominate
+    (displacement mostly rigid per part), with a small blend band across
+    part boundaries so the DAE skins smoothly.
+    """
+    d2 = ((features[:, None, :] - centroids[None, :, :]) ** 2).sum(-1)
+    nearest = d2.min(-1, keepdims=True)
+    denom = np.maximum(nearest, 1e-18)
+    return np.exp(-3.0 * (d2 / denom) ** 2)
 
 
-def _frame_positions(meshes: Sequence[g3dlib.Mesh], frame: int) -> list[list[float]]:
-    return [_vertex_at(meshes, i, frame) for i in range(sum(m.vertex_count for m in meshes))]
+def _top_influences(weights: np.ndarray) -> list[tuple[int, float]]:
+    """Top-4 normalized cluster weights for one vertex (soft blend)."""
+    order = np.argsort(-weights)[:_MAX_INFLUENCES]
+    total = weights[order].sum()
+    if total <= 1e-18:
+        return [(int(weights.argmax()), 1.0)]
+    return [(int(b), float(weights[b] / total)) for b in order]
+
+
+def _rest_centroids(
+    rest: np.ndarray,
+    weights: np.ndarray,
+    pair_weights: Sequence[Sequence[tuple[int, float]]],
+) -> list[list[float]]:
+    """Weighted rest-position centroid of each cluster, ``(k, 3)``.
+
+    Matches the original per-bone ``_rest_centroid``: only the top-4
+    (bone, weight) pairs per vertex contribute, with their *renormalized*
+    weights, so clusters that never appear in any selected set get a zero
+    centroid.
+    """
+    k = weights.shape[1]
+    n = weights.shape[0]
+    selected = np.zeros((n, k), dtype=np.float64)
+    for i, pairs in enumerate(pair_weights):
+        for bone, weight in pairs:
+            selected[i, bone] = weight
+    totals = selected.sum(axis=0)  # (k,)
+    centroids = (selected.T @ rest) / np.maximum(totals, 1e-18)[:, None]
+    centroids = np.where((totals > 1e-18)[:, None], centroids, 0.0)
+    return centroids.tolist()
+
+
+def _assign_weights(
+    points: np.ndarray, centroids: np.ndarray
+) -> np.ndarray:
+    """Soft per-bone weights for a foreign model's vertices (rest proximity)."""
+    d2 = ((points[:, None, :] - centroids[None, :, :]) ** 2).sum(-1)
+    nearest = d2.min(-1, keepdims=True)
+    denom = np.maximum(nearest, 1e-18)
+    weights = np.exp(-3.0 * (d2 / denom) ** 2)
+    totals = weights.sum(-1, keepdims=True)
+    normalized = weights / np.maximum(totals, 1e-18)
+    # Degenerate rows (all distances ~equal): one-hot at the nearest centroid.
+    with np.errstate(invalid="ignore"):
+        hot = np.eye(centroids.shape[0])[d2.argmin(-1)]
+    return np.where(totals > 1e-18, normalized, hot)
+
+
+def _nearest_map(points: np.ndarray, queries: np.ndarray) -> np.ndarray:
+    """Index into ``points`` of the closest point for each ``queries`` row."""
+    d2 = ((queries[:, None, :] - points[None, :, :]) ** 2).sum(-1)
+    return d2.argmin(-1)
 
 
 def _cluster_count(vertex_count: int, requested: int) -> int:
@@ -262,103 +414,59 @@ def _cluster_count(vertex_count: int, requested: int) -> int:
     return max(1, min(requested, vertex_count // 5 + 1))
 
 
-def _kmeans(features: Sequence[Sequence[float]], k: int) -> tuple[list[list[float]], list[int]]:
-    """Deterministic k-means++ over ``features``; returns (centroids, labels)."""
-    n = len(features)
-    rng = random.Random(0)
-    dims = len(features[0])
-    centroids: list[list[float]] = [list(features[rng.randrange(n)])]
-    while len(centroids) < k:
-        distances = [min(_dist2(features[i], c) for c in centroids) for i in range(n)]
-        total = sum(distances)
-        if total <= 1e-18:
-            centroids.append(list(features[rng.randrange(n)]))
-            continue
-        target = rng.random() * total
-        running = 0.0
-        for i, d in enumerate(distances):
-            running += d
-            if running >= target:
-                centroids.append(list(features[i]))
-                break
-        else:
-            centroids.append(list(features[-1]))
-
-    labels = [0] * n
-    for _ in range(_KMEANS_ITERATIONS):
-        changed = False
-        sums = [[0.0] * dims for _ in range(k)]
-        counts = [0] * k
-        for i, point in enumerate(features):
-            best = min(range(k), key=lambda b: _dist2(point, centroids[b]))
-            if best != labels[i]:
-                labels[i] = best
-                changed = True
-            for d in range(dims):
-                sums[best][d] += point[d]
-            counts[best] += 1
-        for b in range(k):
-            if counts[b]:
-                centroids[b] = [s / counts[b] for s in sums[b]]
-        if not changed:
-            break
-    return centroids, labels
-
-
-def _dist2(a: Sequence[float], b: Sequence[float]) -> float:
-    return sum((x - y) ** 2 for x, y in zip(a, b))
-
-
-def _soft_weights(
-    point: Sequence[float], centroids: Sequence[Sequence[float]]
-) -> list[tuple[int, float]]:
-    """Top-4 normalized cluster weights for one vertex (near-hard blend)."""
-    distances = [_dist2(point, c) for c in centroids]
-    nearest = min(distances)
-    denom = max(nearest, 1e-18)
-    weights = [math.exp(-3.0 * (d / denom) ** 2) for d in distances]
-    ranked = sorted(range(len(weights)), key=lambda b: weights[b], reverse=True)
-    selected = ranked[:_MAX_INFLUENCES]
-    total = sum(weights[b] for b in selected)
-    if total <= 1e-18:
-        return [(ranked[0], 1.0)]
-    return [(b, weights[b] / total) for b in selected]
-
-
-def _rest_centroid(
-    rest: Sequence[Sequence[float]],
-    weights: Sequence[Sequence[tuple[int, float]]],
-    bone: int,
-) -> list[float]:
-    total = 0.0
-    centroid = [0.0, 0.0, 0.0]
-    for point, vertex_weights in zip(rest, weights):
-        weight = next((w for b, w in vertex_weights if b == bone), 0.0)
-        if weight <= 0:
-            continue
-        total += weight
-        for axis in range(3):
-            centroid[axis] += weight * point[axis]
-    if total <= 1e-18:
-        return [0.0, 0.0, 0.0]
-    return [c / total for c in centroid]
-
-
-def _assign_weights(point: Sequence[float], centroids: Sequence[Sequence[float]]) -> list[float]:
-    """Soft per-bone weights for a foreign model's vertex (rest proximity)."""
-    distances = [_dist2(point, c) for c in centroids]
-    nearest = min(distances)
-    denom = max(nearest, 1e-18)
-    weights = [math.exp(-3.0 * (d / denom) ** 2) for d in distances]
-    total = sum(weights)
-    if total <= 1e-18:
-        return [1.0 if b == distances.index(nearest) else 0.0 for b in range(len(centroids))]
-    return [w / total for w in weights]
-
-
 # ---------------------------------------------------------------------------
-# rigid fitting (scale-free Kabsch via 3x3 SVD)
+# rigid fitting (scale-free Kabsch via batched 3x3 SVD)
 # ---------------------------------------------------------------------------
+
+
+def _kabsch_batch(
+    src: np.ndarray,
+    dsts: np.ndarray,
+    weights: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Weighted rigid fits ``src`` -> each ``dsts`` frame, batched.
+
+    ``src`` is ``(verts, 3)``, ``dsts`` is ``(frames, verts, 3)`` and
+    ``weights`` is ``(M, verts)`` (a row per bone/weight vector, all fitting
+    the same ``dsts``). Returns ``(rot, trans)`` with shapes ``(M, frames,
+    3, 3)`` and ``(M, frames, 3)``, minimizing ``sum(w * |R p + t - q|^2)``.
+    Rows with zero total weight (or degenerate input) yield identity.
+    """
+    src = np.asarray(src, dtype=np.float64)
+    dsts = np.asarray(dsts, dtype=np.float64)
+    weights_arr = np.asarray(weights, dtype=np.float64)
+    if weights_arr.ndim == 1:
+        weights_arr = weights_arr[None, :]
+    m, _ = weights_arr.shape
+    frames = dsts.shape[0]
+
+    totals = weights_arr.sum(-1)  # (m,)
+    ok = totals > 1e-18
+    denom = np.maximum(totals, 1e-18)
+
+    c0 = (weights_arr @ src) / denom[:, None]  # (m, 3)
+    c1 = np.einsum("mv,fvj->mfj", weights_arr, dsts) / denom[:, None, None]
+    srcc = src[None, :, :] - c0[:, None, :]  # (m, verts, 3)  = P - c0
+    # Original H[i][j] = sum_w (P_i - c0)(Q_j - c1); SVD of P*Q^T so that
+    # R = V*U^T maps src onto dst.
+    cov = np.empty((m, frames, 3, 3), dtype=np.float64)
+    for f in range(frames):
+        dstc = dsts[f][None, :, :] - c1[:, f, None, :]  # (m, verts, 3)  = Q - c1
+        cov[:, f] = np.einsum("mv,mvi,mvj->mij", weights_arr, srcc, dstc)
+
+    u, _sigma, vh = np.linalg.svd(cov)
+    # R = V * U^T (V = vh^T), with reflection removed.
+    rot = vh.transpose(0, 1, 3, 2) @ u.transpose(0, 1, 3, 2)
+    mirrored = np.linalg.det(rot) < 0
+    rot[mirrored, :, 2] *= -1.0
+    trans = c1 - np.einsum("mfij,mj->mfi", rot, c0)
+
+    identity = np.broadcast_to(
+        np.eye(3, dtype=np.float64), (m, *rot.shape[1:])
+    ).copy()
+    rot = np.where(ok[:, None, None, None], rot, identity)
+    trans = np.where(ok[:, None, None], trans, 0.0)
+    return rot, trans
 
 
 def _kabsch(
@@ -372,101 +480,35 @@ def _kabsch(
     floats, t as 3 floats). Degenerate inputs (zero weight or a single
     point) yield identity rotation.
     """
-    total = sum(weights)
-    if total <= 1e-18:
-        return ([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 0.0])
-    c0 = [sum(w * p[axis] for p, w in zip(src, weights)) / total for axis in range(3)]
-    c1 = [sum(w * p[axis] for p, w in zip(dst, weights)) / total for axis in range(3)]
-
-    h = [[0.0] * 3 for _ in range(3)]
-    for p, q, w in zip(src, dst, weights):
-        for i in range(3):
-            for j in range(3):
-                h[i][j] += w * (p[i] - c0[i]) * (q[j] - c1[j])
-
-    u, _, vt = _svd3(h)
-    # R = V * U^T, with reflection removed
-    v = _transpose(vt)
-    r = _matmul(v, _transpose(u))
-    if _det3(r) < 0:
-        for row in r:
-            row[2] = -row[2]
-    flat = [r[i][j] for i in range(3) for j in range(3)]
-    t = [c1[i] - sum(r[i][j] * c0[j] for j in range(3)) for i in range(3)]
-    return flat, t
-
-
-def _svd3(a: Sequence[Sequence[float]]) -> tuple[list[list[float]], list[float], list[list[float]]]:
-    """SVD of a 3x3 matrix via Jacobi eigen-decomposition of A^T A."""
-    at_a = [[sum(a[k][i] * a[k][j] for k in range(3)) for j in range(3)] for i in range(3)]
-    v = [[1.0 if i == j else 0.0 for j in range(3)] for i in range(3)]
-    for _ in range(64):
-        off_diag = sum(at_a[i][j] ** 2 for i in range(3) for j in range(i + 1, 3))
-        if off_diag < 1e-22:
-            break
-        for p in range(3):
-            for q in range(p + 1, 3):
-                apq = at_a[p][q]
-                if abs(apq) < 1e-16:
-                    continue
-                theta = (at_a[q][q] - at_a[p][p]) / (2.0 * apq)
-                sign = 1.0 if theta >= 0 else -1.0
-                t = sign / (abs(theta) + math.sqrt(theta * theta + 1.0))
-                c = 1.0 / math.sqrt(t * t + 1.0)
-                s = t * c
-                for k in range(3):
-                    if k == p or k == q:
-                        continue
-                    akp = at_a[k][p]
-                    akq = at_a[k][q]
-                    at_a[k][p] = c * akp - s * akq
-                    at_a[k][q] = s * akp + c * akq
-                    at_a[p][k] = at_a[k][p]
-                    at_a[q][k] = at_a[k][q]
-                app = at_a[p][p]
-                aqq = at_a[q][q]
-                apq = at_a[p][q]
-                at_a[p][p] = c * c * app - 2.0 * s * c * apq + s * s * aqq
-                at_a[q][q] = s * s * app + 2.0 * s * c * apq + c * c * aqq
-                at_a[p][q] = 0.0
-                at_a[q][p] = 0.0
-                for k in range(3):
-                    vkp = v[k][p]
-                    vkq = v[k][q]
-                    v[k][p] = c * vkp - s * vkq
-                    v[k][q] = s * vkp + c * vkq
-
-    eigenvalues = [at_a[i][i] for i in range(3)]
-    order = sorted(range(3), key=lambda i: eigenvalues[i], reverse=True)
-    v = [[v[i][order[j]] for j in range(3)] for i in range(3)]
-    sigma = [math.sqrt(max(at_a[i][i], 0.0)) for i in order]
-    u = [[0.0] * 3 for _ in range(3)]
-    for j in range(3):
-        if sigma[j] < 1e-12:
-            u[j][j] = 1.0
-            continue
-        for i in range(3):
-            u[i][j] = sum(a[i][k] * v[k][j] for k in range(3)) / sigma[j]
-    # NOTE: do NOT flip u to force det(u)=+1 here - that breaks the
-    # reconstruction u*Sigma*v^T = A. Reflection removal is _kabsch's job
-    # (applied to the final R, per Umeyama).
-    return u, sigma, _transpose(v)
-
-
-def _transpose(m: Sequence[Sequence[float]]) -> list[list[float]]:
-    return [[m[j][i] for j in range(len(m))] for i in range(len(m[0]))]
-
-
-def _matmul(a: Sequence[Sequence[float]], b: Sequence[Sequence[float]]) -> list[list[float]]:
-    return [
-        [sum(a[i][k] * b[k][j] for k in range(len(b))) for j in range(len(b[0]))]
-        for i in range(len(a))
-    ]
-
-
-def _det3(m: Sequence[Sequence[float]]) -> float:
-    return (
-        m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
-        - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
-        + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+    rot, trans = _kabsch_batch(
+        np.asarray(src, dtype=np.float64),
+        np.asarray(dst, dtype=np.float64)[None, :, :],
+        np.asarray(weights, dtype=np.float64),
     )
+    return rot[0, 0].reshape(-1).tolist(), trans[0, 0].tolist()
+
+
+def _align_points(
+    src: Sequence[Sequence[float]],
+    dst: Sequence[Sequence[float]],
+) -> tuple[list[float], list[float]]:
+    """Unweighted Procrustes alignment: find R, t minimizing |R*src + t - dst|².
+
+    Returns (R as 9 row-major floats, t as 3 floats).  Applied to a point p
+    as: ``R*p + t``.  Degenerate inputs yield identity.
+    """
+    points = np.asarray(src, dtype=np.float64)
+    targets = np.asarray(dst, dtype=np.float64)
+    if len(points) < 2:
+        return ([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 0.0])
+    rot, trans = _kabsch(points, targets, [1.0] * len(points))
+    return rot, trans
+
+
+def _apply_rigid(rot: list[float], t: list[float], p: list[float]) -> list[float]:
+    """Apply rigid transform (rot as 9 row-major floats, t as 3 floats) to a point."""
+    return [
+        rot[0] * p[0] + rot[1] * p[1] + rot[2] * p[2] + t[0],
+        rot[3] * p[0] + rot[4] * p[1] + rot[5] * p[2] + t[1],
+        rot[6] * p[0] + rot[7] * p[1] + rot[8] * p[2] + t[2],
+    ]

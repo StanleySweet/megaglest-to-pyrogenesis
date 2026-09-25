@@ -5,6 +5,12 @@ unit's model, its converted base texture, and — for rigged models — the
 animation files that drive it. The material is chosen per target version.
 Structure actors omit the foundation actor (the public mod ships no
 simulation-side ``fndn_*`` templates to reference).
+
+Skinned-prop sync: every ``<animation>`` carries an ``id`` equal to its
+``name``. The engine's ``CUnitAnimation`` picks a random animation id on the
+root model (``PickAnimationID``) and plays the matching ``id`` on every
+attached prop; without shared ids props fall back to idle and desync (see
+``tools/validate_animations.py`` for the lint that guards this).
 """
 
 from __future__ import annotations
@@ -113,11 +119,30 @@ def _build_actor(
     # <variant>, never at actor level (CXeromyces rejects the latter)
     if props is not None:
         variant.append(props)
+    _add_particle_props(variant, unit, stats)
     if unit.is_building:
         _add_health_group(root, civ, des, stats)
     material = etree.SubElement(root, "material")
     material.text = _material_for(g3d, stats, settings)
     return root
+
+
+def _add_particle_props(
+    variant: etree._Element, unit: UnitDef, stats: MediaConversionStats
+) -> None:
+    """Attach the unit's converted particle systems as actor props.
+
+    ``stats.unit_particle_props[unit]`` lists ``particle/<name>.xml`` props
+    (the actor wrappers written by :mod:`particle_converter`). They attach at
+    the default ``root`` prop point so they follow the unit's base pose.
+    """
+    props = stats.unit_particle_props.get(sanitize_mod_name(unit.name))
+    if not props:
+        return
+    container = etree.Element("props")
+    for rel in props:
+        etree.SubElement(container, "prop", actor=rel, attachpoint="root")
+    variant.append(container)
 
 
 def _add_health_group(
@@ -176,18 +201,26 @@ def _add_props(
     The engine ships a default ``root`` prop point at the origin on every
     converted model (``PMDConvert::AddDefaultPropPoints``), so extra meshes
     attached there align with the main mesh's base pose. Each prop carries
-    its own texture group's baseTex (``mesh_textures``).
+    its own texture group's baseTex (``mesh_textures``) and, when the
+    model is rigged, animation DAEs so texture-split props (e.g. hedir
+    sword) follow the same skeletal motion as the body.
     """
     extra = mesh_daes[1:]
     if not extra:
         return None
     material = _material_for(g3d, stats, settings)
+    prop_anims = stats.prop_animations.get(g3d, {})
     props = etree.Element("props")
-    for dae in extra:
+    for idx, dae in enumerate(extra):
+        group_index = idx + 1
         prop_path = mod_dir / "art/actors/props" / civ / f"{dae.stem}.xml"
         if prop_path not in written:
             prop_path.parent.mkdir(parents=True, exist_ok=True)
-            _write_xml(prop_path, _prop_actor(civ, dae, _dae_texture(dae, g3d, stats), material))
+            anims = prop_anims.get(group_index, {})
+            prop_actor = _prop_actor(
+                civ, dae, _dae_texture(dae, g3d, stats), material, anims
+            )
+            _write_xml(prop_path, prop_actor)
             written.append(prop_path)
         etree.SubElement(props, "prop", actor=f"props/{civ}/{dae.stem}.xml", attachpoint="root")
     return props
@@ -257,7 +290,13 @@ def _build_foundation_actor(
     return path
 
 
-def _prop_actor(civ: str, dae: Path, texture: Path | None, material: str) -> etree._Element:
+def _prop_actor(
+    civ: str,
+    dae: Path,
+    texture: Path | None,
+    material: str,
+    animations: dict[str, Path] | None = None,
+) -> etree._Element:
     root = etree.Element("actor", version="1")
     etree.SubElement(root, "castshadow")
     group = etree.SubElement(root, "group")
@@ -266,6 +305,20 @@ def _prop_actor(civ: str, dae: Path, texture: Path | None, material: str) -> etr
     mesh.text = f"{civ}/{dae.name}"
     if texture is not None:
         _add_textures(variant, civ, texture)
+    if animations:
+        container = etree.SubElement(variant, "animations")
+        for name in sorted(animations):
+            path = animations[name]
+            attrs = {
+                "file": f"{civ}/{path.name}",
+                "name": name,
+                "speed": _ANIM_SPEED_PERCENT,
+                # The animation id drives skinned-prop sync: a unit's parts
+                # share the same id per name so PickAnimationID keeps them in
+                # frame (see tools/validate_animations.py).
+                "id": name,
+            }
+            etree.SubElement(container, "animation", **attrs)
     material_node = etree.SubElement(root, "material")
     material_node.text = material
     return root
@@ -300,7 +353,14 @@ def _add_animations(
     container = etree.SubElement(variant, "animations")
     for name in sorted(anims):
         path = anims[name]
-        attrs = {"file": f"{civ}/{path.name}", "name": name, "speed": _ANIM_SPEED_PERCENT}
+        attrs = {
+            "file": f"{civ}/{path.name}",
+            "name": name,
+            "speed": _ANIM_SPEED_PERCENT,
+            # id == name keeps every skinned part of this unit synced; the
+            # engine selects the shared id via PickAnimationID.
+            "id": name,
+        }
         if name in ("attack_melee", "attack_ranged"):
             start = _attack_start_time(unit, name)
             if 0.0 < start < 1.0:

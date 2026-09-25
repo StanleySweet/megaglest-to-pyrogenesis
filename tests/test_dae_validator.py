@@ -43,9 +43,9 @@ def _tamper(dae: Path, rewrite) -> None:
 def _mod_tree(tmp_path: Path) -> Path:
     """Convert the three fixture g3ds into an art/ tree like the real pipeline."""
     mod = tmp_path / "mod"
-    for g3d in ("gold.g3d", "dryad_idle.g3d", "academy_cons.g3d"):
+    for g3d in ("gold.g3d", "treant_idle.g3d", "workshop_cons.g3d"):
         result = MeshConverter().convert_g3d_to_dae(
-            G3D_FIXTURES / g3d, mod / "art" / "meshes" / "elves", "elves"
+            G3D_FIXTURES / g3d, mod / "art" / "meshes" / "demo", "demo"
         )
         for path in result.mesh_daes:
             assert path.exists()
@@ -55,7 +55,7 @@ def _mod_tree(tmp_path: Path) -> Path:
 def test_audit_pack_ok(tmp_path: Path) -> None:
     mod = _mod_tree(tmp_path)
     audit = validate_mod_meshes(mod)
-    # 1 (gold) + 3 (dryad) + 5 (academy) static DAEs, all importable
+    # 1 (gold) + 3 (treant) + 5 (workshop) static DAEs, all importable
     assert audit.checked == 9
     assert audit.passed == 9
     assert audit.ok
@@ -63,15 +63,15 @@ def test_audit_pack_ok(tmp_path: Path) -> None:
 
 def test_static_dae_importable(tmp_path: Path) -> None:
     result = MeshConverter().convert_g3d_to_dae(
-        G3D_FIXTURES / "gold.g3d", tmp_path / "meshes", "elves"
+        G3D_FIXTURES / "gold.g3d", tmp_path / "meshes", "demo"
     )
     assert validate_mesh_dae(result.mesh_daes[0]) == []
 
 
 def test_uvless_mesh_importable(tmp_path: Path) -> None:
-    """academy_cons Mesh.006 has no UV block; synthetic TEXCOORD keeps it legal."""
+    """workshop_cons Mesh.006 has no UV block; synthetic TEXCOORD keeps it legal."""
     result = MeshConverter().convert_g3d_to_dae(
-        G3D_FIXTURES / "academy_cons.g3d", tmp_path / "meshes", "elves"
+        G3D_FIXTURES / "workshop_cons.g3d", tmp_path / "meshes", "demo"
     )
     assert validate_mesh_dae(result.mesh_daes[4]) == []
 
@@ -79,7 +79,7 @@ def test_uvless_mesh_importable(tmp_path: Path) -> None:
 def test_controller_instance_unresolved(tmp_path: Path) -> None:
     """A controller whose url resolves to nothing is flagged."""
     result = MeshConverter().convert_g3d_to_dae(
-        G3D_FIXTURES / "gold.g3d", tmp_path / "meshes", "elves"
+        G3D_FIXTURES / "gold.g3d", tmp_path / "meshes", "demo"
     )
     dae = result.mesh_daes[0]
 
@@ -97,15 +97,15 @@ def test_controller_instance_unresolved(tmp_path: Path) -> None:
 
 
 def _rigged(tmp_path: Path) -> tuple[Path, Path, object]:
-    """Skinned mesh DAE + animation DAE for the dryad fixture."""
-    model = read_g3d(G3D_FIXTURES / "dryad_idle.g3d")
+    """Skinned mesh DAE + animation DAE for the treant fixture."""
+    model = read_g3d(G3D_FIXTURES / "treant_idle.g3d")
     groups = texture_groups(model, lambda _name: None)
     rig = build_rig(model, groups, 4, "test_root")
     result = MeshConverter().convert_g3d_to_dae(
-        G3D_FIXTURES / "dryad_idle.g3d", tmp_path / "meshes", "elves", rig=rig
+        G3D_FIXTURES / "treant_idle.g3d", tmp_path / "meshes", "demo", rig=rig
     )
-    anim = tmp_path / "meshes" / "dryad_idle_stop.dae"
-    MeshConverter().write_animation_dae(model, model, rig, anim, "elves", 40.0, True)
+    anim = tmp_path / "meshes" / "treant_idle_stop.dae"
+    MeshConverter().write_animation_dae(model, model, rig, anim, "demo", 40.0, True)
     return result.mesh_daes[0], anim, rig
 
 
@@ -153,7 +153,7 @@ def test_skin_detects_unnormalized_weights(tmp_path: Path) -> None:
 
 def test_detects_second_instanced_object(tmp_path: Path) -> None:
     result = MeshConverter().convert_g3d_to_dae(
-        G3D_FIXTURES / "gold.g3d", tmp_path / "meshes", "elves"
+        G3D_FIXTURES / "gold.g3d", tmp_path / "meshes", "demo"
     )
     dae = result.mesh_daes[0]
 
@@ -169,7 +169,7 @@ def test_detects_second_instanced_object(tmp_path: Path) -> None:
 
 def test_detects_missing_texcoord(tmp_path: Path) -> None:
     result = MeshConverter().convert_g3d_to_dae(
-        G3D_FIXTURES / "gold.g3d", tmp_path / "meshes", "elves"
+        G3D_FIXTURES / "gold.g3d", tmp_path / "meshes", "demo"
     )
     dae = result.mesh_daes[0]
 
@@ -186,7 +186,7 @@ def test_detects_missing_texcoord(tmp_path: Path) -> None:
 
 def test_detects_malformed_xml(tmp_path: Path) -> None:
     result = MeshConverter().convert_g3d_to_dae(
-        G3D_FIXTURES / "gold.g3d", tmp_path / "meshes", "elves"
+        G3D_FIXTURES / "gold.g3d", tmp_path / "meshes", "demo"
     )
     result.mesh_daes[0].write_text("<COLLADA><broken", encoding="utf-8")
     failures = validate_mesh_dae(result.mesh_daes[0])

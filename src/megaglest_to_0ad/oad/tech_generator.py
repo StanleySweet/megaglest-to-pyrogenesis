@@ -12,13 +12,23 @@ convention, e.g. ``"tech": "umay/gather_increase_1"``).
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 
 from ..core.config import Settings
 from ..core.media_conversion import MediaConversionStats
 from ..megaglest.civ_loader import Faction, UpgradeDef
-from .common import HP_SCALE, SPEED_SCALE, TIME_SCALE, humanize_name, resource_cost
+from .common import (
+    HP_SCALE,
+    SPEED_SCALE,
+    TIME_SCALE,
+    humanize_name,
+    resource_cost,
+    unmapped_resources,
+)
 from .mod_builder import sanitize_mod_name
+
+LOGGER = logging.getLogger(__name__)
 
 
 def generate_techs(
@@ -32,6 +42,12 @@ def generate_techs(
     civ = sanitize_mod_name(faction.name)
     written: list[Path] = []
     for name, upgrade in sorted(faction.upgrades.items()):
+        dropped = unmapped_resources(upgrade.resource_requirements)
+        if dropped:
+            summary = ", ".join(f"{k} x{v}" for k, v in sorted(dropped.items()))
+            message = f"tech {name}: custom resources '{summary}' have no 0 A.D. analog; dropped"
+            stats.warnings.append(message)
+            LOGGER.warning("tech: %s", message)
         payload = _build_tech(civ, name, upgrade, faction.units)
         path = mod_dir / "simulation/data/technologies" / civ / f"{sanitize_mod_name(name)}.json"
         path.parent.mkdir(parents=True, exist_ok=True)

@@ -31,6 +31,7 @@ class AttackStats:
     strength: float = 0.0
     variance: float = 0.0
     range: float = 0.0
+
     attack_type: str = ""
     start_time: float = 0.0
     fields: list[str] = field(default_factory=list)
@@ -40,6 +41,24 @@ class AttackStats:
     splash_particle: Path | None = None
     sounds: list[Path] = field(default_factory=list)
 
+
+def _resolve_cancel_image(base: Path, ref: str, macros: dict[str, Path]) -> Path:
+    """Resolve an ``image-cancel`` reference with a faction-root fallback.
+
+    The megapack ships upgrade icons one level above where its own XMLs
+    point (``../../../cancel.bmp`` from ``factions/<civ>/upgrades/<u>/``
+    lands on ``factions/cancel.bmp``, but the file lives at
+    ``factions/<civ>/cancel.bmp``). Prefer the exact path; when it is
+    missing, fall back to the same basename in the faction directory —
+    mirroring the engine's multi-root search.
+    """
+    resolved = resolve_pack_path(base, ref, macros)
+    if not resolved.exists():
+        fallback = base.parents[1] / Path(ref).name
+        if fallback.exists():
+            LOGGER.debug("cancel image fallback: %s -> %s", resolved, fallback)
+            return fallback
+    return resolved
 
 @dataclass
 class SkillDef:
@@ -81,6 +100,7 @@ class UnitDef:
     directory: Path
     xml_path: Path
     is_building: bool = False
+    is_flying: bool = False
     parameters: dict[str, Any] = field(default_factory=dict)
     parameters_raw: dict[str, Any] = field(default_factory=dict)
     skills: dict[str, SkillDef] = field(default_factory=dict)
@@ -221,6 +241,7 @@ def load_unit(pack: MegaglestPack, unit_dir: Path) -> UnitDef:
     unit.selection_sounds = unit.parameters.get("selection_sounds", [])
     unit.command_sounds = unit.parameters.get("command_sounds", [])
     unit.is_building = _classify_building(unit)
+    unit.is_flying = "air" in (unit.parameters.get("fields") or [])
     return unit
 
 
@@ -246,7 +267,7 @@ def load_upgrade(pack: MegaglestPack, upgrade_dir: Path) -> UpgradeDef:
         elif tag == "image-cancel":
             ref = child.path_attr()
             if ref:
-                upgrade.image_cancel = resolve_pack_path(upgrade_dir, ref, macros)
+                upgrade.image_cancel = _resolve_cancel_image(upgrade_dir, ref, macros)
         elif tag == "time":
             upgrade.time = child.float_value(0.0)
         elif tag == "unit-requirements":
@@ -402,7 +423,7 @@ def _parse_parameters(
             params["image"] = resolve_pack_path(base, ref, macros) if ref else None
         elif tag == "image-cancel":
             ref = child.path_attr()
-            params["image_cancel"] = resolve_pack_path(base, ref, macros) if ref else None
+            params["image_cancel"] = _resolve_cancel_image(base, ref, macros) if ref else None
         elif tag in {"selection-sounds", "command-sounds"}:
             params[tag.replace("-", "_")] = _sound_paths(child, base, macros)
         else:
@@ -573,7 +594,7 @@ def _classify_building(unit: UnitDef) -> bool:
     if params.get("ai_build_size"):
         return True
     if any(skill.type == "move" for skill in unit.skills.values()):
-        # Mobile producers (MG minstrel summons dryads/ents) are field
+        # Mobile producers (MG bard summons treants/ents) are field
         # units, not buildings: MG buildings never move.
         return False
     if "burnable" in (params.get("properties") or []):

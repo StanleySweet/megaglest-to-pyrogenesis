@@ -8,7 +8,7 @@ Derived from the authoritative reader in the MegaGlest source tree
 - `source/shared_lib/sources/shared/graphics/model.cpp` — `Mesh::loadV3`,
   `Mesh::loadV4` and friends
 
-Validated empirically against all 96 `.g3d` files in the `elves_A10` pack
+Validated empirically against all 96 `.g3d` files in the `demo_A10` pack
 (single-mesh and multi-mesh, versions 3 and 4).
 
 ## File layout (version 4)
@@ -58,23 +58,23 @@ for each mesh m:
 - Texture names are resolved relative to the directory containing the `.g3d`
   file.
 
-### Observed values (elves_A10 pack)
+### Observed values (demo_A10 pack)
 
 - `meshCount` ranges 1–9 (it is a count, not a bitmask). All sub-meshes share
   the main mesh's `frameCount`. Zero mismatches between the header count and
   the number of sections that parse, across all 87 version-4 files.
 - Indices are `uint32` and always `< vertexCount`.
 - Normals are unit-length in files exported with `fmt=3`+; some older files
-  (`minstrel_idle.g3d`) carry unnormalized normals (lengths ~1.05–1.36) and
+  (`bard_idle.g3d`) carry unnormalized normals (lengths ~1.05–1.36) and
   must be normalized on import.
-- The diffuse texture bit is optional: `academy_cons.g3d`'s final mesh
+- The diffuse texture bit is optional: `workshop_cons.g3d`'s final mesh
   (`Mesh.006`) has `textures == 0` and therefore **no UV block**; the file
   ends exactly at EOF after its index array. Do not assume every mesh has UVs.
   `gold.g3d` lives at `resources/gold/models/gold.g3d` (not under `units/`).
 
 ## File layout (version 3)
 
-Observed in exactly one pack file: `mage_tower_destruction.g3d`.
+Observed in exactly one pack file: `tower_destruction.g3d`.
 
 ```
 FileHeader                                    ; 4 bytes, version == 3
@@ -101,10 +101,10 @@ uint32 indices[indexCount]
 - Front faces are **clockwise** (comment in `model_header.h`). Importers that
   target counter-clockwise front faces (OpenGL default, 0 A.D.) must flip the
   winding, i.e. emit triangle indices `(a, c, b)` instead of `(a, b, c)`.
-- `mage_tower_destruction.g3d` quirk: the header's texture name is
-  `texture_ashes_magic.tga.tga` — the extension is doubled in the pack.
+- `tower_destruction.g3d` quirk: the header's texture name is
+  `texture_spark.tga.tga` — the extension is doubled in the pack.
   Preserve the name when resolving the file; the actual on-disk file is
-  `texture_ashes_magic.tga` (the doubled suffix is dropped on disk). Indices
+  `texture_spark.tga` (the doubled suffix is dropped on disk). Indices
   end exactly at EOF; `pointCount=836`, `indexCount=2004`, all index values
   `< 836`.
 

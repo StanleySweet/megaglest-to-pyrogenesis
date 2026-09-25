@@ -15,7 +15,7 @@ def test_list_factions(layout_b_pack: Path) -> None:
     result = runner.invoke(cli, ["list-factions", str(layout_b_pack)])
     assert result.exit_code == 0, result.output
     assert "layout flat" in result.output
-    assert "elves" in result.output
+    assert "demo" in result.output
 
 
 def test_convert_end_to_end(layout_b_pack: Path, tmp_path: Path) -> None:
@@ -36,9 +36,9 @@ def test_convert_end_to_end(layout_b_pack: Path, tmp_path: Path) -> None:
     report = json.loads((mod_dir / "conversion_report.json").read_text(encoding="utf-8"))
     assert report["pack"]["layout"] == "flat"
     assert report["pack"]["name"] == "layout_b"
-    assert report["factions"]["elves"]["units"] == ["barracks", "elf"]
-    assert report["factions"]["elves"]["buildings"] == ["barracks"]
-    assert report["factions"]["elves"]["upgrades"] == ["weaponry"]
+    assert report["factions"]["demo"]["units"] == ["barracks", "grunt"]
+    assert report["factions"]["demo"]["buildings"] == ["barracks"]
+    assert report["factions"]["demo"]["upgrades"] == ["weaponry"]
     assert report["assets"]["meshes"] == 3
     assert "units: 1  buildings: 1  upgrades: 1" in result.output
 
@@ -54,11 +54,11 @@ def test_convert_selected_faction(layout_b_pack: Path, tmp_path: Path) -> None:
             "--output",
             str(tmp_path),
             "--factions",
-            "elves",
+            "demo",
         ],
     )
     assert result.exit_code == 0, result.output
-    assert "factions: elves" in result.output
+    assert "factions: demo" in result.output
 
 
 def test_convert_unknown_faction_fails(layout_b_pack: Path, tmp_path: Path) -> None:

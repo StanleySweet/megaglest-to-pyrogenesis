@@ -9,6 +9,7 @@ component (0.28 and 0.29 both), not the obsolete ``Armour``.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from lxml import etree
@@ -22,11 +23,15 @@ from .common import (
     SPEED_SCALE,
     TILE_METERS,
     TIME_SCALE,
+    grace_amount,
     humanize_name,
     resource_cost,
     town_centre_candidate,
+    unmapped_resources,
 )
 from .mod_builder import sanitize_mod_name
+
+LOGGER = logging.getLogger(__name__)
 
 
 def generate_templates(
@@ -41,6 +46,13 @@ def generate_templates(
     tc = town_centre_candidate(faction)
     written: list[Path] = []
     for name, unit in sorted(faction.units.items()):
+        requirements = unit.parameters.get("resource_requirements", {})
+        dropped = unmapped_resources(requirements, grace_is_mapped=True)
+        if dropped:
+            summary = ", ".join(f"{k} x{v}" for k, v in sorted(dropped.items()))
+            message = f"{name}: custom resources '{summary}' have no 0 A.D. analog; dropped"
+            stats.warnings.append(message)
+            LOGGER.warning("template: %s", message)
         root = _build_template(faction, civ, unit, tc, stats)
         sub = "structures" if unit.is_building else "units"
         path = mod_dir / "simulation/templates" / sub / civ / f"{sanitize_mod_name(name)}.xml"
@@ -61,6 +73,8 @@ def _parent_for(unit: UnitDef, tc: UnitDef | None) -> str:
         if any(cmd.type == "upgrade" for cmd in unit.commands):
             return "template_structure_economic"
         return "template_structure"
+    if unit.is_flying:
+        return "template_unit"
     attacks = [skill.attack for skill in unit.skills.values() if skill.attack]
     move_speed = max(
         (skill.speed for skill in unit.skills.values() if skill.type == "move"),
@@ -85,6 +99,7 @@ def _build_template(
         _add_health(root, unit)
         _add_identity(root, civ, unit)
         _add_obstruction(root, unit, stats)
+        _add_population_bonus(root, unit)
         _add_researcher(root, civ, unit)
         _add_trainer(root, civ, unit)
         _add_sound(root, civ, unit)
@@ -93,7 +108,7 @@ def _build_template(
         # component refs in registration (alphabetical) order, so components
         # must be emitted in that order: Attack, Builder, Cost, Health,
         # Identity, Promotion, Resistance, UnitMotion, Vision.
-        _add_attack(root, unit)
+        _add_attack(root, unit, stats)
         buildable = sorted(
             sanitize_mod_name(n) for n, u in faction.units.items() if u.is_building
         )
@@ -104,7 +119,7 @@ def _build_template(
         _add_promotion(root, civ, unit)
         _add_resistance(root, unit)
         _add_gatherer(root, unit)
-        # Mobile summoners (MG minstrel) produce units too; Trainer is
+        # Mobile summoners (MG bard) produce units too; Trainer is
         # entity-generic in the engine, so a unit can keep its summons.
         _add_trainer(root, civ, unit)
         _add_motion(root, unit)
@@ -115,7 +130,9 @@ def _build_template(
 
 
 def _add_cost(root: etree._Element, unit: UnitDef, build_time: bool) -> None:
-    resources = resource_cost(unit.parameters.get("resource_requirements", {}))
+    requirements = unit.parameters.get("resource_requirements", {})
+    resources = resource_cost(requirements)
+    grace = grace_amount(requirements)
     if not resources and not build_time:
         return
     cost = etree.SubElement(root, "Cost")
@@ -132,10 +149,34 @@ def _add_cost(root: etree._Element, unit: UnitDef, build_time: bool) -> None:
             if name in resources:
                 node = etree.SubElement(res, name)
                 node.text = str(resources[name])
-    # Population is required by the 0.28+ Cost schema; buildings do not
-    # consume population.
+    # 0 A.D. has no ``grace`` resource; it is population instead. A unit's
+    # positive grace cost is the population slots it consumes. Population is
+    # not consumed by buildings (see _add_population_bonus).
     population = etree.SubElement(cost, "Population")
-    population.text = "0" if build_time else "1"
+    if build_time:
+        population.text = "0"
+    else:
+        population.text = str(grace if grace > 0 else "1")
+
+
+def _add_population_bonus(root: etree._Element, unit: UnitDef) -> None:
+    """A building's negative ``grace`` cost grants a population-cap bonus.
+
+    MegaGlest buildings with a negative grace requirement *provide* grace
+    while they stand (the sanctuary/PeC mechanic); 0 A.D. expresses the same
+    idea with the ``Population`` component's ``Bonus`` (house analog).
+    Producible structures (sanctuary, great_tree in the demo pack) emit
+    it; a nonnegative grace emits nothing.
+    """
+    grace = grace_amount(unit.parameters.get("resource_requirements", {}))
+    if grace >= 0:
+        return
+    pop = etree.Element("Population")
+    etree.SubElement(pop, "Bonus").text = str(-grace)
+    # components are emitted alphabetically (engine registration order);
+    # Population sits between Obstruction and Researcher.
+    index = next((i for i, el in enumerate(root) if el.tag > "Population"), len(root))
+    root.insert(index, pop)
 
 
 def _add_footprint(root: etree._Element, unit: UnitDef, stats: MediaConversionStats) -> None:
@@ -189,13 +230,15 @@ def _add_resistance(root: etree._Element, unit: UnitDef) -> None:
         node.text = _fmt(armor / HP_SCALE)
 
 
-def _add_attack(root: etree._Element, unit: UnitDef) -> None:
+def _add_attack(
+    root: etree._Element, unit: UnitDef, stats: MediaConversionStats
+) -> None:
     attacks = [(skill, skill.attack) for skill in unit.skills.values() if skill.attack]
     if not attacks:
         return
     attack = etree.SubElement(root, "Attack")
-    for skill, stats in attacks:
-        ranged = stats.range > 4 or stats.projectile
+    for skill, astats in attacks:
+        ranged = astats.range > 4 or astats.projectile
         kind = "Ranged" if ranged else "Melee"
         node = etree.SubElement(attack, kind)
         # AttackName/MaxRange/RepeatTime are required by the 0.28+ Attack
@@ -203,17 +246,17 @@ def _add_attack(root: etree._Element, unit: UnitDef) -> None:
         # (100 / anim_speed seconds per cycle).
         etree.SubElement(node, "AttackName").text = kind
         damage = etree.SubElement(node, "Damage")
-        damage_kind = "Pierce" if stats.attack_type == "pierce" else "Hack"
+        damage_kind = "Pierce" if astats.attack_type == "pierce" else "Hack"
         dmg_node = etree.SubElement(damage, damage_kind)
-        dmg_node.text = _fmt(stats.strength / HP_SCALE)
+        dmg_node.text = _fmt(astats.strength / HP_SCALE)
         rng = etree.SubElement(node, "MaxRange")
-        rng.text = _fmt(max(1.0, stats.range * TILE_METERS))
+        rng.text = _fmt(max(1.0, astats.range * TILE_METERS))
         if skill.anim_speed > 0:
             repeat = max(500, round(1000 * 100.0 / skill.anim_speed))
         else:
             repeat = 1000
         etree.SubElement(node, "RepeatTime").text = str(repeat)
-        if stats.projectile:
+        if astats.projectile:
             # Without a Projectile block the engine applies damage
             # instantly at the attack event; MG archers mark
             # attack-projectile so their arrows fly (dodgeable, blocked
@@ -226,6 +269,32 @@ def _add_attack(root: etree._Element, unit: UnitDef) -> None:
                 ("FriendlyFire", "false"),
             ):
                 etree.SubElement(projectile, name).text = value
+            _add_projectile_visuals(projectile, astats, stats)
+
+
+def _add_projectile_visuals(
+    projectile: etree._Element,
+    astats,
+    stats: MediaConversionStats,
+) -> None:
+    """Attach the converted projectile/impact actors to a Projectile block.
+
+    The MegaGlest ``projectile_particle`` that references the attack's
+    projectile model is resolved (via ``stats.projectile_actor_by_particle``)
+    into a 0 A.D. ``ActorName`` so the flying arrow/stone is visible, plus an
+    ``ImpactActorName`` for the impact burst. Falls back to the unit's own
+    actor projectile (engine default) when no conversion exists.
+    """
+    particle_xml = astats.projectile_particle
+    actor = stats.projectile_actor_by_particle.get(particle_xml) if particle_xml else None
+    if actor is None:
+        return
+    etree.SubElement(projectile, "ActorName").text = actor
+    g3d = next((g for g, rel in stats.projectile_actor.items() if rel == actor), None)
+    impact = stats.projectile_impact_actor.get(g3d) if g3d is not None else None
+    if impact:
+        etree.SubElement(projectile, "ImpactActorName").text = impact
+        etree.SubElement(projectile, "ImpactAnimationLifetime").text = "0.3"
 
 def _add_identity(root: etree._Element, civ: str, unit: UnitDef) -> None:
     label = humanize_name(unit.name)
@@ -266,16 +335,22 @@ def _add_motion(root: etree._Element, unit: UnitDef) -> None:
     )
     if speed <= 0:
         return
-    motion = etree.SubElement(root, "UnitMotion")
+    tag = "UnitMotionFlying" if unit.is_flying else "UnitMotion"
+    motion = etree.SubElement(root, tag)
     walk = etree.SubElement(motion, "WalkSpeed")
     walk.text = _fmt(speed / SPEED_SCALE)
-    # FormationController/InstantTurnAngle/Acceleration/PassabilityClass/
-    # Weight are required by the 0.28+ UnitMotion schema.
+    if unit.is_flying:
+        # The 0.28 UnitMotionFlying schema requires MaxSpeed (nonNegativeDecimal).
+        max_speed = etree.SubElement(motion, "MaxSpeed")
+        max_speed.text = _fmt(speed / SPEED_SCALE)
     etree.SubElement(motion, "FormationController").text = "false"
     etree.SubElement(motion, "InstantTurnAngle").text = "1.0"
     etree.SubElement(motion, "Acceleration").text = "3.0"
-    etree.SubElement(motion, "PassabilityClass").text = "default"
+    passability = "air" if unit.is_flying else "default"
+    etree.SubElement(motion, "PassabilityClass").text = passability
     etree.SubElement(motion, "Weight").text = "10"
+    if unit.is_flying:
+        etree.SubElement(motion, "FlyingHeight").text = "10"
 
 
 def _add_vision(root: etree._Element, unit: UnitDef) -> None:

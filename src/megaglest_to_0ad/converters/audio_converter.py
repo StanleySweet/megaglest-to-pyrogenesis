@@ -79,7 +79,7 @@ class AudioConverter:
         """Write one 0 A.D. sound-group XML (random selection within a set).
 
         ``sounds_dir`` is the mod-relative directory of the sounds (e.g.
-        ``audio/sfx/elves/``); ``sound_names`` are basenames inside it.
+        ``audio/sfx/demo/``); ``sound_names`` are basenames inside it.
         """
         root = etree.Element("SoundGroup")
         for tag, value in (
