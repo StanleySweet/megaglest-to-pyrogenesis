@@ -881,12 +881,17 @@ Open work, tracked as GitHub issues. Story points are the usual Fibonacci guess.
 
 | Issue | Labels | Points |
 |---|---|---|
-| Convert MegaGlest maps into 0 A.D. maps | `enhancement` | 13 |
-| Ship the civ loading screen in the converted mod | `bug` | 2 |
-| Cache parsed models and replace brute-force NN with a KD-tree | `performance` | 8 |
-| Spike: are compiled hot loops still worth it after the above | `performance`, `spike` | 5 |
-| Release gate: a converted mod loads green in 0 A.D. | `verification` | 3 |
-| Release gate: the `.pyromod` archive installs from the mod screen | `verification` | 3 |
+| [#3 Convert MegaGlest maps into 0 A.D. maps](https://github.com/StanleySweet/megaglest-to-pyrogenesis/issues/3) | `enhancement` | 13 |
+| [#1 Ship the civ loading screen in the converted mod](https://github.com/StanleySweet/megaglest-to-pyrogenesis/issues/1) | `bug` | 2 |
+| [#2 Cache parsed models and replace brute-force NN with a KD-tree](https://github.com/StanleySweet/megaglest-to-pyrogenesis/issues/2) | `performance` | 8 |
+| [#4 Spike: are compiled hot loops still worth it after the above](https://github.com/StanleySweet/megaglest-to-pyrogenesis/issues/4) | `performance`, `spike` | 5 |
+| [#5 Release gate: a converted mod loads green in 0 A.D.](https://github.com/StanleySweet/megaglest-to-pyrogenesis/issues/5) | `verification` | 3 |
+| [#6 Release gate: the `.pyromod` archive installs from the mod screen](https://github.com/StanleySweet/megaglest-to-pyrogenesis/issues/6) | `verification` | 3 |
+
+Suggested order: #1 is a two-hour fix, #3 is the only large piece of new
+functionality, and #2 should land before #4 because #4 is a measurement of #2's
+result. #5 and #6 are the release gate and should run last, on the output of
+whichever of the above has landed.
 
 The two release gates are the only work here that cannot run in CI: both need a
 local 0 A.D. install. The remaining unchecked boxes in **Phase 6** and the
