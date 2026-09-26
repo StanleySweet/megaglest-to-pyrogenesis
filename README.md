@@ -107,7 +107,7 @@ The unarchived folder loads in 0 A.D. on its own. Build the archive for distribu
 │   ├── oad/             # 0 A.D. XML and JSON generation, mesh validation
 │   └── utils/
 ├── tests/               # test suite and fixtures
-├── tools/               # one-off inspection scripts
+├── tools/               # inspection and migration scripts, see below
 ├── vendor/g3d/          # G3D reader and format notes, GPLv3, from MegaGlest
 ├── pyproject.toml
 └── README.md
@@ -117,7 +117,7 @@ The unarchived folder loads in 0 A.D. on its own. Build the archive for distribu
 
 ```bash
 python -m pytest
-python -m ruff check src/ tests/
+python -m ruff check src/ tests/ tools/
 ```
 
 Regenerate the test fixtures after editing the generator:
@@ -125,6 +125,17 @@ Regenerate the test fixtures after editing the generator:
 ```bash
 python tools/make_test_fixtures.py
 ```
+
+### Tools
+
+None of these are throwaway; each covers something the CLI does not.
+
+| Tool | What it is for |
+| --- | --- |
+| `benchmark_rig.py` | Times the rig-synthesis hot path (nearest-neighbour transfer over synthetic point clouds, plus the committed `.g3d` fixtures). Use it before and after touching `converters/rig.py`. |
+| `verify_animations.py` | Checks skinning and frame fidelity of converted DAEs against the source G3D frames, with configurable tolerances. The unit tests cover the known fixtures; this runs against a real converted pack. |
+| `validate_animations.py` | Lints a MegaGlest pack for animation ids referenced by actors and props that no loaded unit actually defines. |
+| `upgrade_materials.py` | Rewrites MegaGlest material-family references to the names this converter emits, for migrating an older converted mod. |
 
 ## License
 
