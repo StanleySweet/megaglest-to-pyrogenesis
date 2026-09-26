@@ -150,25 +150,15 @@ def test_convert_particles_end_to_end(tmp_path: Path, layout_b_pack: Path) -> No
     tex.parent.mkdir(parents=True, exist_ok=True)
     _make_bmp(tex)
 
-    faction = Faction(
-        name="demo",
-        directory=tmp_path,
-        xml_path=tmp_path / "factions.xml",
-        units={
-            "grunt": UnitDef(
-                name="grunt",
-                directory=tmp_path / "units" / "grunt",
-                xml_path=tmp_path / "units" / "grunt" / "grunt.xml",
-                skills={
+    faction = Faction(name="demo", units={
+            "grunt": UnitDef(name="grunt", directory=tmp_path / "units" / "grunt", skills={
                     "attack": SkillDef(
                         type="attack",
                         name="attack",
                         attack=AttackStats(projectile=False, splash_particle=splash),
                     )
-                },
-            )
-        },
-    )
+                })
+        })
     mod = tmp_path / "mod"
     stats = MediaConversionStats()
     convert_particles(faction, mod, Settings(), stats)

@@ -29,15 +29,12 @@ class AttackStats:
     """Attack skill parameters."""
 
     strength: float = 0.0
-    variance: float = 0.0
     range: float = 0.0
 
     attack_type: str = ""
     start_time: float = 0.0
-    fields: list[str] = field(default_factory=list)
     projectile: bool = False
     projectile_particle: Path | None = None
-    splash_radius: float = 0.0
     splash_particle: Path | None = None
     sounds: list[Path] = field(default_factory=list)
 
@@ -66,11 +63,9 @@ class SkillDef:
 
     type: str
     name: str
-    ep_cost: float = 0.0
     speed: float = 0.0
     anim_speed: float = 0.0
     animation: Path | None = None
-    animation_ref: str | None = None
     sounds: list[Path] = field(default_factory=list)
     particles: list[Path] = field(default_factory=list)
     attack: AttackStats | None = None
@@ -88,8 +83,6 @@ class CommandDef:
     produced_unit: str | None = None
     produced_upgrade: str | None = None
     morph_unit: str | None = None
-    discount: float = 0.0
-    requirements: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -98,11 +91,9 @@ class UnitDef:
 
     name: str
     directory: Path
-    xml_path: Path
     is_building: bool = False
     is_flying: bool = False
     parameters: dict[str, Any] = field(default_factory=dict)
-    parameters_raw: dict[str, Any] = field(default_factory=dict)
     skills: dict[str, SkillDef] = field(default_factory=dict)
     commands: list[CommandDef] = field(default_factory=list)
     image: Path | None = None
@@ -117,8 +108,6 @@ class UpgradeDef:
     """A MegaGlest upgrade (technology)."""
 
     name: str
-    directory: Path
-    xml_path: Path
     time: float = 0.0
     image: Path | None = None
     image_cancel: Path | None = None
@@ -135,8 +124,6 @@ class Faction:
     """A MegaGlest faction: metadata plus its units and upgrades."""
 
     name: str
-    directory: Path
-    xml_path: Path
     loading_screen: Path | None = None
     music: Path | None = None
     starting_resources: dict[str, int] = field(default_factory=dict)
@@ -157,7 +144,7 @@ def load_faction(pack: MegaglestPack, faction_dir: Path) -> Faction:
             "Faction XML root is <%s>, expected <faction>", root.tag, extra={"faction": name}
         )
 
-    faction = Faction(name=name, directory=faction_dir, xml_path=xml_path)
+    faction = Faction(name=name)
     macros = pack.macro_map()
 
     for child in root.children:
@@ -218,17 +205,15 @@ def load_unit(pack: MegaglestPack, unit_dir: Path) -> UnitDef:
     if root.tag != "unit":
         LOGGER.warning("Unit XML root is <%s>, expected <unit>", root.tag, extra={"unit": name})
 
-    unit = UnitDef(name=name, directory=unit_dir, xml_path=xml_path)
+    unit = UnitDef(name=name, directory=unit_dir)
     macros = pack.macro_map()
 
     for child in root.children:
         tag = child.tag
         if tag == "parameters":
-            (
-                unit.parameters,
-                unit.parameters_raw,
-                unit.unmapped_parameters,
-            ) = _parse_parameters(child, unit_dir, macros)
+            unit.parameters, unit.unmapped_parameters = _parse_parameters(
+                child, unit_dir, macros
+            )
         elif tag == "skills":
             unit.skills = _parse_skills(child, unit_dir, macros)
         elif tag == "commands":
@@ -255,7 +240,7 @@ def load_upgrade(pack: MegaglestPack, upgrade_dir: Path) -> UpgradeDef:
             "Upgrade XML root is <%s>, expected <upgrade>", root.tag, extra={"upgrade": name}
         )
 
-    upgrade = UpgradeDef(name=name, directory=upgrade_dir, xml_path=xml_path)
+    upgrade = UpgradeDef(name=name)
     macros = pack.macro_map()
 
     for child in root.children:
@@ -366,7 +351,7 @@ def _named_amounts(node: XmlNode) -> dict[str, int]:
 
 def _parse_parameters(
     node: XmlNode, base: Path, macros: dict[str, Path]
-) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
+) -> tuple[dict[str, Any], list[str]]:
     """Map ``<parameters>`` children into a typed dict; unknown tags logged."""
     params: dict[str, Any] = {}
     unmapped: list[str] = []
@@ -429,7 +414,7 @@ def _parse_parameters(
         else:
             unmapped.append(tag)
 
-    return params, node.as_dict(), unmapped
+    return params, unmapped
 
 
 def _sound_paths(node: XmlNode, base: Path, macros: dict[str, Path]) -> list[Path]:
@@ -466,8 +451,6 @@ def _parse_skill(node: XmlNode, base: Path, macros: dict[str, Path]) -> SkillDef
         if tag in {"type", "name"}:
             # Handled above when constructing the SkillDef.
             pass
-        elif tag == "ep-cost":
-            skill.ep_cost = child.float_value(0.0)
         elif tag == "speed":
             skill.speed = child.float_value(0.0)
         elif tag == "anim-speed":
@@ -475,7 +458,6 @@ def _parse_skill(node: XmlNode, base: Path, macros: dict[str, Path]) -> SkillDef
         elif tag == "animation":
             ref = child.path_attr()
             if ref:
-                skill.animation_ref = ref
                 skill.animation = resolve_pack_path(base, ref, macros)
         elif tag == "sound":
             _collect_sound_files(skill.sounds, child, base, macros)
@@ -494,9 +476,6 @@ def _parse_skill(node: XmlNode, base: Path, macros: dict[str, Path]) -> SkillDef
         elif tag == "splash":
             attack = skill.attack = skill.attack or AttackStats()
             _collect_nested_sounds(attack.sounds, child, base, macros)
-            radius = child.get("radius")
-            if radius is not None:
-                attack.splash_radius = radius.float_value(0.0)
             particle = child.get("particle")
             if particle is not None and particle.path_attr():
                 attack.splash_particle = resolve_pack_path(base, particle.path_attr(), macros)
@@ -542,16 +521,12 @@ def _parse_attack_field(attack: AttackStats, node: XmlNode) -> None:
     tag = node.tag
     if tag == "attack-strength":
         attack.strength = node.float_value(0.0)
-    elif tag == "attack-var":
-        attack.variance = node.float_value(0.0)
     elif tag == "attack-range":
         attack.range = node.float_value(0.0)
     elif tag == "attack-type":
         attack.attack_type = str(node.value() or "")
     elif tag == "attack-start-time":
         attack.start_time = node.float_value(0.0)
-    elif tag == "attack-fields":
-        attack.fields = [str(field_node.value() or "") for field_node in node.get_all("field")]
 
 
 def _parse_commands(node: XmlNode, base: Path, macros: dict[str, Path]) -> list[CommandDef]:
@@ -575,10 +550,6 @@ def _parse_commands(node: XmlNode, base: Path, macros: dict[str, Path]) -> list[
                 command.produced_upgrade = sub.name_attr()
             elif tag == "morph-unit":
                 command.morph_unit = sub.name_attr()
-            elif tag == "discount":
-                command.discount = sub.float_value(0.0)
-            elif tag in {"unit-requirements", "upgrade-requirements"}:
-                command.requirements.extend(_names(sub))
             elif tag.endswith("-skill"):
                 ref = sub.value()
                 if ref:

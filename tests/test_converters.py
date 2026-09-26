@@ -342,16 +342,11 @@ def test_mesh_stem_collision_deduped(tmp_path: Path) -> None:
         target.parent.mkdir(parents=True)
         target.write_bytes((G3D_FIXTURES / "gold.g3d").read_bytes())
 
-    faction = Faction(
-        name="demo",
-        directory=tmp_path,
-        xml_path=tmp_path / "factions.xml",
-        units={
-            "a": UnitDef(name="a", directory=one.parent, xml_path=tmp_path / "a.xml"),
-            "b": UnitDef(name="b", directory=two.parent, xml_path=tmp_path / "b.xml"),
-            "c": UnitDef(name="c", directory=three.parent, xml_path=tmp_path / "c.xml"),
-        },
-    )
+    faction = Faction(name="demo", units={
+            "a": UnitDef(name="a", directory=one.parent),
+            "b": UnitDef(name="b", directory=two.parent),
+            "c": UnitDef(name="c", directory=three.parent),
+        })
     mod = tmp_path / "mod"
     stats = convert_faction_media(faction, mod, Settings(), tmp_path)
 
@@ -387,19 +382,10 @@ def test_texture_alpha_flags_model_transparent(tmp_path: Path) -> None:
     with Image.new("RGBA", (8, 8), (255, 0, 0, 0)) as img:
         img.save(alpha_dir / "texture_gold.png")
 
-    faction = Faction(
-        name="demo",
-        directory=tmp_path,
-        xml_path=tmp_path / "factions.xml",
-        units={
-            "opaque": UnitDef(
-                name="opaque", directory=opaque_dir, xml_path=tmp_path / "opaque.xml"
-            ),
-            "alpha": UnitDef(
-                name="alpha", directory=alpha_dir, xml_path=tmp_path / "alpha.xml"
-            ),
-        },
-    )
+    faction = Faction(name="demo", units={
+            "opaque": UnitDef(name="opaque", directory=opaque_dir),
+            "alpha": UnitDef(name="alpha", directory=alpha_dir),
+        })
     stats = convert_faction_media(faction, tmp_path / "mod", Settings(), tmp_path)
     assert alpha_dir / "gold.g3d" in stats.transparent_models
     assert opaque_dir / "gold.g3d" not in stats.transparent_models
@@ -562,34 +548,6 @@ def test_multi_group_skin_matches_group_geometry(tmp_path: Path) -> None:
     assert weights_count == geometry_verts, (
         f"skin weights ({weights_count}) must cover group geometry ({geometry_verts})"
     )
-
-
-def test_align_points_translation() -> None:
-    """_align_points finds the rigid transform mapping src→dst."""
-    from megaglest_to_0ad.converters.rig import _align_points, _apply_rigid
-
-    src = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0], [2.0, 6.0, 1.0]]
-    offset = [5.0, -3.0, 2.0]
-    dst = [[v[i] + offset[i] for i in range(3)] for v in src]
-    rot, t = _align_points(src, dst)
-    for s, d in zip(src, dst):
-        result = _apply_rigid(rot, t, s)
-        for axis in range(3):
-            assert result[axis] == pytest.approx(d[axis], abs=1e-5)
-
-
-def test_align_points_rotation() -> None:
-    """_align_points handles a 90° rotation around Z."""
-    from megaglest_to_0ad.converters.rig import _align_points, _apply_rigid
-
-    src = [[2.0, 0.0, 0.0], [0.0, 3.0, 0.0], [1.0, 4.0, 0.0], [3.0, 1.0, 0.0]]
-    # 90° CCW around Z: (x,y,z) → (-y,x,z)
-    dst = [[0.0, 2.0, 0.0], [-3.0, 0.0, 0.0], [-4.0, 1.0, 0.0], [-1.0, 3.0, 0.0]]
-    rot, t = _align_points(src, dst)
-    for s, d in zip(src, dst):
-        result = _apply_rigid(rot, t, s)
-        for axis in range(3):
-            assert result[axis] == pytest.approx(d[axis], abs=1e-5)
 
 
 def test_fit_group_frames_aligns_offset_model() -> None:

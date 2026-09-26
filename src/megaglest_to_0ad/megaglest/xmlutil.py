@@ -91,19 +91,6 @@ class XmlNode:
             return False
         return default
 
-    def as_dict(self) -> dict[str, Any]:
-        """Recursive plain-dict form (raw capture for downstream phases)."""
-        result: dict[str, Any] = dict(self.attrs)
-        if self.text:
-            result["text"] = self.text
-        children: dict[str, list[dict[str, Any]]] = {}
-        for child in self.children:
-            children.setdefault(child.tag, []).append(child.as_dict())
-        if children:
-            result["children"] = children
-        return result
-
-
 def parse_xml(path: Path) -> XmlNode:
     """Parse a MegaGlest XML file into an :class:`XmlNode` tree.
 

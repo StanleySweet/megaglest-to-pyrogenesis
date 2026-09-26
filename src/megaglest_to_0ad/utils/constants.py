@@ -7,7 +7,6 @@ TEXTURE_SUFFIXES = frozenset({".bmp", ".png", ".tga", ".jpg", ".jpeg"})
 SOUND_SUFFIXES = frozenset({".wav", ".ogg"})
 MUSIC_SUFFIXES = frozenset({".ogg", ".mp3"})
 MAP_SUFFIXES = frozenset({".mgm", ".gbm"})
-XML_SUFFIX = ".xml"
 
 LOADING_SCREEN_GLOBS = (
     "loading_screen.png",

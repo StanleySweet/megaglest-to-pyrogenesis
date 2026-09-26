@@ -84,11 +84,6 @@ def _sanitize_id(value: str, fallback: str = "mesh") -> str:
     return cleaned
 
 
-def sanitize_stem(value: str) -> str:
-    """Public alias: derive a safe DAE basename / joint-name fragment."""
-    return _sanitize_id(value)
-
-
 # ---------------------------------------------------------------------------
 # model loading
 # ---------------------------------------------------------------------------

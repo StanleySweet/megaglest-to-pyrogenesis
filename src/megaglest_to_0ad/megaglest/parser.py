@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..core.errors import PackStructureError
-from .xmlutil import parse_xml
 
 if TYPE_CHECKING:
     from .civ_loader import Faction
@@ -34,15 +33,6 @@ class LayoutKind(Enum):
     FLAT = "flat"
 
 
-@dataclass(frozen=True)
-class TechTree:
-    """Attack/armor types and damage multipliers from the tech-tree XML."""
-
-    attack_types: tuple[str, ...] = ()
-    armor_types: tuple[str, ...] = ()
-    damage_multipliers: dict[tuple[str, str], float] = field(default_factory=dict)
-
-
 @dataclass
 class MegaglestPack:
     """A discovered MegaGlest pack (structure only; factions load lazily)."""
@@ -55,10 +45,6 @@ class MegaglestPack:
     tech_xml: Path | None = None
     factions: dict[str, Faction] = field(default_factory=dict)
     resources_dir: Path | None = None
-    tilesets_dir: Path | None = None
-    maps_dir: Path | None = None
-    scenarios_dir: Path | None = None
-    tech_tree: TechTree | None = None
     factions: dict[str, object] = field(default_factory=dict)
 
     def macro_map(self) -> dict[str, Path]:
@@ -112,15 +98,10 @@ def discover_pack(root: Path) -> MegaglestPack:
 
     pack.commondata_dir = _optional_dir(root / "commondata")
     pack.resources_dir = _optional_dir(root / "resources")
-    pack.tilesets_dir = _optional_dir(root / "tilesets")
-    pack.maps_dir = _optional_dir(root / "maps")
-    pack.scenarios_dir = _optional_dir(root / "scenarios")
     if not pack.factions_dir.is_dir():
         raise PackStructureError(f"Factions directory missing: {pack.factions_dir}")
 
-    if pack.tech_xml is not None:
-        pack.tech_tree = _parse_tech_tree(pack.tech_xml)
-    else:
+    if pack.tech_xml is None:
         LOGGER.warning("No tech-tree XML found for pack %s", pack.name)
 
     LOGGER.info(
@@ -150,32 +131,3 @@ def _first_xml(directory: Path, preferred_stem: str) -> Path | None:
     return matches[0] if matches else None
 
 
-def _parse_tech_tree(tech_xml: Path) -> TechTree:
-    root = parse_xml(tech_xml)
-    attack_types: tuple[str, ...] = ()
-    armor_types: tuple[str, ...] = ()
-    multipliers: dict[tuple[str, str], float] = {}
-
-    node = root.get("attack-types")
-    if node is not None:
-        attack_types = tuple(
-            str(item.value() or item.name_attr() or "") for item in node.get_all("attack-type")
-        )
-    node = root.get("armor-types")
-    if node is not None:
-        armor_types = tuple(
-            str(item.value() or item.name_attr() or "") for item in node.get_all("armor-type")
-        )
-    node = root.get("damage-multipliers")
-    if node is not None:
-        for item in node.get_all("damage-multiplier"):
-            attack = item.attr("attack")
-            armor = item.attr("armor")
-            value = item.float_value()
-            if attack and armor and value is not None:
-                multipliers[(attack, armor)] = value
-    return TechTree(
-        attack_types=attack_types,
-        armor_types=armor_types,
-        damage_multipliers=multipliers,
-    )

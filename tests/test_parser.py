@@ -28,14 +28,6 @@ def test_discover_classic_layout(layout_a_pack: Path) -> None:
     assert pack.factions_dir == layout_a_pack / "techs" / "demo_tech" / "factions"
 
 
-def test_tech_tree_parsed(layout_b_pack: Path) -> None:
-    pack = discover_pack(layout_b_pack)
-    assert pack.tech_tree is not None
-    assert "piercing" in pack.tech_tree.attack_types
-    assert "leather" in pack.tech_tree.armor_types
-    assert pack.tech_tree.damage_multipliers[("piercing", "leather")] == 1.25
-
-
 def test_macro_map(layout_b_pack: Path) -> None:
     pack = discover_pack(layout_b_pack)
     macros = pack.macro_map()

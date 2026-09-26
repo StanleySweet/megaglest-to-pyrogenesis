@@ -16,6 +16,3 @@ class ParseError(ConversionError):
 class AssetReferenceError(ConversionError):
     """A referenced asset is missing or unresolvable."""
 
-
-class OutputValidationError(ConversionError):
-    """Generated output failed validation."""

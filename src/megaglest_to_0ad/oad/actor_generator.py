@@ -28,8 +28,6 @@ from .mod_builder import sanitize_mod_name
 
 LOGGER = logging.getLogger(__name__)
 
-_ACTOR_NS = None  # no namespace: 0 A.D. actor XML is namespace-free
-
 # Actor animation speed is integer percent (ObjectBase.cpp: ToInt()/100);
 # the MegaGlest anim-speed is baked into the DAE keyframe times instead.
 _ANIM_SPEED_PERCENT = "100"

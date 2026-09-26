@@ -41,7 +41,6 @@ def _unit(
     return UnitDef(
         name=name,
         directory=Path(f"/packs/{name}"),
-        xml_path=Path(f"/packs/{name}/{name}.xml"),
         is_building=is_building,
         parameters=parameters or {},
         skills=skills or {},
@@ -62,7 +61,7 @@ def _stats_with_model(g3d: Path, tmp_path: Path) -> tuple[MediaConversionStats, 
 
 
 def _faction_with(tmp_path: Path, units: dict[str, UnitDef], name: str = "demo") -> Faction:
-    return Faction(name=name, directory=tmp_path, xml_path=tmp_path / f"{name}.xml", units=units)
+    return Faction(name=name, units=units)
 
 
 # ---------------------------------------------------------------------------
@@ -110,8 +109,6 @@ def test_civ_generator_inserts_town_centre_when_starting_units_have_none(
     tc = _unit("great_tree", is_building=True, parameters={"size": 2})
     faction = Faction(
         name="demo",
-        directory=tmp_path,
-        xml_path=tmp_path / "demo.xml",
         starting_units=[("grunt", 2)],
         units={"grunt": _unit("grunt"), "great_tree": tc},
     )
@@ -121,13 +118,7 @@ def test_civ_generator_inserts_town_centre_when_starting_units_have_none(
 
 
 def test_civ_generator_writes_player_template(tmp_path: Path) -> None:
-    faction = Faction(
-        name="demo",
-        directory=tmp_path,
-        xml_path=tmp_path / "demo.xml",
-        starting_units=[],
-        units={},
-    )
+    faction = Faction(name="demo", starting_units=[], units={})
     _, player_path = generate_civ(faction, tmp_path, MediaConversionStats(), Settings())
     root = etree.parse(player_path).getroot()
     assert root.tag == "Entity"
@@ -359,7 +350,6 @@ def test_template_flying_unit_has_maxspeed(tmp_path: Path) -> None:
     gryphon = UnitDef(
         name="gryphon",
         directory=Path("/packs/gryphon"),
-        xml_path=Path("/packs/gryphon/gryphon.xml"),
         is_flying=True,
         parameters={},
         skills={"move": SkillDef(type="move", name="m", speed=250)},
@@ -671,29 +661,21 @@ def test_template_footprint_from_model_bbox(tmp_path: Path) -> None:
 
 
 def test_tech_generator_shape(tmp_path: Path) -> None:
+    # ghost is not a unit -> filtered from affects
     upgrade = UpgradeDef(
         name="weaponry",
-        directory=tmp_path,
-        xml_path=tmp_path / "weaponry.xml",
         time=250,
         image=tmp_path / "weaponry.png",
         unit_requirements=["grunt"],
         upgrade_requirements=["iron_working"],
         resource_requirements={"gold": 200, "wood": 100},
-        effects=["grunt", "ghost"],  # ghost is not a unit -> filtered from affects
+        effects=["grunt", "ghost"],
         stats={
             "max_hp": {"value": 100, "start_percentage": 100},
             "armor": 5,
             "attack_strength": 10,
-        },
-    )
-    faction = Faction(
-        name="demo",
-        directory=tmp_path,
-        xml_path=tmp_path / "demo.xml",
-        units={"grunt": _unit("grunt")},
-        upgrades={"weaponry": upgrade},
-    )
+        })
+    faction = Faction(name="demo", units={"grunt": _unit("grunt")}, upgrades={"weaponry": upgrade})
     written = generate_techs(faction, tmp_path, MediaConversionStats(), Settings())
     assert [p.name for p in written] == ["weaponry.json"]
 
@@ -725,18 +707,8 @@ def test_tech_generator_shape(tmp_path: Path) -> None:
 
 
 def test_tech_generator_health_multiply_uses_start_percentage(tmp_path: Path) -> None:
-    upgrade = UpgradeDef(
-        name="training",
-        directory=tmp_path,
-        xml_path=tmp_path / "training.xml",
-        stats={"max_hp": {"value": 100, "start_percentage": 50}},
-    )
-    faction = Faction(
-        name="demo",
-        directory=tmp_path,
-        xml_path=tmp_path / "demo.xml",
-        upgrades={"training": upgrade},
-    )
+    upgrade = UpgradeDef(name="training", stats={"max_hp": {"value": 100, "start_percentage": 50}})
+    faction = Faction(name="demo", upgrades={"training": upgrade})
     generate_techs(faction, tmp_path, MediaConversionStats(), Settings())
     payload = json.loads(
         (tmp_path / "simulation/data/technologies/demo/training.json").read_text(encoding="utf-8")
@@ -748,18 +720,8 @@ def test_tech_generator_health_multiply_uses_start_percentage(tmp_path: Path) ->
 def test_tech_grace_cost_warns_and_drops(tmp_path: Path) -> None:
     """Techs have no population analog, so a grace cost is reported and
     dropped rather than added to the 0 A.D. cost block."""
-    upgrade = UpgradeDef(
-        name="blessing",
-        directory=tmp_path,
-        xml_path=tmp_path / "blessing.xml",
-        resource_requirements={"gold": 100, "grace": 2},
-    )
-    faction = Faction(
-        name="demo",
-        directory=tmp_path,
-        xml_path=tmp_path / "demo.xml",
-        upgrades={"blessing": upgrade},
-    )
+    upgrade = UpgradeDef(name="blessing", resource_requirements={"gold": 100, "grace": 2})
+    faction = Faction(name="demo", upgrades={"blessing": upgrade})
     stats = MediaConversionStats()
     generate_techs(faction, tmp_path, stats, Settings())
     payload = json.loads(

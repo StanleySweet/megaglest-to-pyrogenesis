@@ -18,7 +18,6 @@ def _minimal_unit(name: str, skills=None, commands=None, parameters=None) -> Uni
     return UnitDef(
         name=name,
         directory=Path(f"/packs/{name}"),
-        xml_path=Path(f"/packs/{name}/{name}.xml"),
         parameters=parameters or {},
         skills=skills or {},
         commands=commands or [],

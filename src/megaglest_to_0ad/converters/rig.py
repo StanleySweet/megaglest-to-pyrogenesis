@@ -406,22 +406,6 @@ def _rest_centroids(
     return centroids.tolist()
 
 
-def _assign_weights(
-    points: np.ndarray, centroids: np.ndarray
-) -> np.ndarray:
-    """Soft per-bone weights for a foreign model's vertices (rest proximity)."""
-    d2 = ((points[:, None, :] - centroids[None, :, :]) ** 2).sum(-1)
-    nearest = d2.min(-1, keepdims=True)
-    denom = np.maximum(nearest, 1e-18)
-    weights = np.exp(-3.0 * (d2 / denom) ** 2)
-    totals = weights.sum(-1, keepdims=True)
-    normalized = weights / np.maximum(totals, 1e-18)
-    # Degenerate rows (all distances ~equal): one-hot at the nearest centroid.
-    with np.errstate(invalid="ignore"):
-        hot = np.eye(centroids.shape[0])[d2.argmin(-1)]
-    return np.where(totals > 1e-18, normalized, hot)
-
-
 # Below this, the full distance matrix is a couple of megabytes and building a
 # grid costs more than it saves, so the quadratic expression is kept verbatim and
 # small models take the identical code path they always did. Measured crossover
@@ -655,27 +639,4 @@ def _kabsch(
     return rot[0, 0].reshape(-1).tolist(), trans[0, 0].tolist()
 
 
-def _align_points(
-    src: Sequence[Sequence[float]],
-    dst: Sequence[Sequence[float]],
-) -> tuple[list[float], list[float]]:
-    """Unweighted Procrustes alignment: find R, t minimizing |R*src + t - dst|².
 
-    Returns (R as 9 row-major floats, t as 3 floats).  Applied to a point p
-    as: ``R*p + t``.  Degenerate inputs yield identity.
-    """
-    points = np.asarray(src, dtype=np.float64)
-    targets = np.asarray(dst, dtype=np.float64)
-    if len(points) < 2:
-        return ([1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 0.0])
-    rot, trans = _kabsch(points, targets, [1.0] * len(points))
-    return rot, trans
-
-
-def _apply_rigid(rot: list[float], t: list[float], p: list[float]) -> list[float]:
-    """Apply rigid transform (rot as 9 row-major floats, t as 3 floats) to a point."""
-    return [
-        rot[0] * p[0] + rot[1] * p[1] + rot[2] * p[2] + t[0],
-        rot[3] * p[0] + rot[4] * p[1] + rot[5] * p[2] + t[1],
-        rot[6] * p[0] + rot[7] * p[1] + rot[8] * p[2] + t[2],
-    ]
