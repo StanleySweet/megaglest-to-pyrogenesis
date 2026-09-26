@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import sys
 from pathlib import Path
 
 import click
@@ -10,12 +12,59 @@ import click
 from .core.config import Settings
 from .core.converter import convert_pack
 from .core.errors import ConversionError
-from .core.logger import configure_logging, get_logger
 from .megaglest.parser import discover_pack
 
-LOGGER = get_logger("cli")
+LOGGER = logging.getLogger("cli")
 
 LOG_LEVELS = ["DEBUG", "INFO", "WARNING", "ERROR"]
+
+# Attributes logging puts on every record; anything else was passed via extra=
+# and is what the caller wanted in the output.
+_STANDARD_RECORD_FIELDS = frozenset(logging.makeLogRecord({}).__dict__) | {
+    "message",
+    "asctime",
+    "taskName",
+}
+
+
+class _JsonFormatter(logging.Formatter):
+    """One JSON object per record: the standard fields plus any ``extra``.
+
+    The summary lines carry their numbers in ``extra`` rather than in the
+    message -- "Conversion complete" says nothing without the unit and
+    building counts -- so the extras have to survive into the output.
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "time": self.formatTime(record),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        payload.update(
+            {
+                key: value
+                for key, value in record.__dict__.items()
+                if key not in _STANDARD_RECORD_FIELDS and not key.startswith("_")
+            }
+        )
+        # extras are arbitrary values (paths, sets of unmapped tags)
+        if record.exc_info:
+            # otherwise LOGGER.exception() logs the message and no traceback
+            payload["exception"] = self.formatException(record.exc_info)
+        return json.dumps(payload, default=str)
+
+
+def configure_logging(level: str) -> None:
+    """Log JSON to stderr at ``level``.
+
+    ``basicConfig`` is a no-op once the root logger has handlers, so calling
+    this from several commands is safe.
+    """
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(_JsonFormatter())
+    logging.basicConfig(level=level.upper(), handlers=[handler])
 
 
 @click.group()

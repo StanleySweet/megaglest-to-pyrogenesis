@@ -119,3 +119,79 @@ def test_validate_fails_on_name_mismatch(tmp_path: Path) -> None:
     result = runner.invoke(cli, ["validate", str(mod_dir)])
     assert result.exit_code != 0
     assert "does not match folder" in result.output
+
+
+def _logged_records(level: str = "INFO") -> list[dict]:
+    """Run ``level`` logging through the CLI's formatter and parse the result."""
+    import io
+    import logging
+
+    from megaglest_to_0ad.main import _JsonFormatter
+
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(_JsonFormatter())
+    logger = logging.getLogger("test.cli")
+    logger.handlers = [handler]
+    logger.propagate = False
+    logger.setLevel(level)
+    return stream, logger
+
+
+def test_log_lines_are_json_with_extras() -> None:
+    """The summary lines carry their numbers in extra, not in the message.
+
+    "Conversion complete" says nothing on its own, so if the formatter stops
+    passing extras through, the converter's only progress output goes blank
+    and nothing fails.
+    """
+    import json
+
+    stream, logger = _logged_records()
+    logger.info("Conversion complete", extra={"pack": "demo", "units": 12})
+    record = json.loads(stream.getvalue().strip())
+    assert record["message"] == "Conversion complete"
+    assert record["units"] == 12
+    assert record["pack"] == "demo"
+    assert record["level"] == "INFO"
+    assert "logger" in record and "time" in record
+
+
+def test_log_line_keeps_the_traceback() -> None:
+    import json
+
+    stream, logger = _logged_records()
+    try:
+        raise ValueError("kaboom")
+    except ValueError:
+        logger.exception("failed")
+    record = json.loads(stream.getvalue().strip())
+    assert record["message"] == "failed"
+    assert "ValueError: kaboom" in record["exception"]
+
+
+def test_unserialisable_extra_does_not_break_logging() -> None:
+    """Extras are arbitrary values -- sets, paths -- so fall back to str()."""
+    import json
+
+    stream, logger = _logged_records()
+    logger.warning("Unmapped tags", extra={"unit": "archer", "tags": {"a", "b"}})
+    record = json.loads(stream.getvalue().strip())
+    assert record["unit"] == "archer"
+    assert isinstance(record["tags"], str), "a set must be stringified, not dropped"
+    assert "a" in record["tags"] and "b" in record["tags"]
+
+
+def test_configure_logging_is_idempotent() -> None:
+    import logging
+
+    from megaglest_to_0ad.main import configure_logging
+
+    root = logging.getLogger()
+    before = list(root.handlers)
+    try:
+        configure_logging("INFO")
+        configure_logging("DEBUG")
+        assert root.handlers == before, "a second call must not add a handler"
+    finally:
+        root.handlers = before

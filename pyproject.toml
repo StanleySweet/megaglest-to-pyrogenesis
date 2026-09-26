@@ -13,7 +13,6 @@ license-files = ["LICENSE", "vendor/g3d/LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "click>=8.1.0",
-    "python-json-logger>=2.0.7",
     "Pillow>=10.0.0",
     "lxml>=4.9.0",
     "numpy>=1.26.0",
