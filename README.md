@@ -63,6 +63,16 @@ megaglest-to-pyrogenesis convert \
 | `--rig-bones` | `32` | Maximum joints, root included, of the synthesized rig per model (2-64) |
 | `--log-level` | `INFO` | `DEBUG`, `INFO`, `WARNING`, or `ERROR` |
 
+Generated DAEs are byte-reproducible: the same input always yields the same
+output bytes, so output hashes are a usable regression signal. The
+`<created>`/`<modified>` stamps in the COLLADA asset block come from
+`SOURCE_DATE_EPOCH` (the reproducible-builds standard, as used by Debian and
+Nix) and default to the epoch when it is unset:
+
+```bash
+SOURCE_DATE_EPOCH=1700000000 megaglest-to-pyrogenesis convert --megaglest-data PACK
+```
+
 ### Validate the result
 
 `validate` runs offline. It checks `mod.json` presence, required fields, the name against the folder name, and the `ignoreInCompatibilityChecks` rule:
