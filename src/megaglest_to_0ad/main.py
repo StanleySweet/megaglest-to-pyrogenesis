@@ -101,7 +101,7 @@ def convert(
 ) -> None:
     """Convert a MegaGlest pack into a 0 A.D. mod."""
     configure_logging(log_level)
-    settings = Settings(log_level=log_level, skip_media=skip_media, rig_bones=rig_bones)
+    settings = Settings(skip_media=skip_media, rig_bones=rig_bones)
     try:
         report = convert_pack(megaglest_data, output, factions, settings)
     except ConversionError as exc:

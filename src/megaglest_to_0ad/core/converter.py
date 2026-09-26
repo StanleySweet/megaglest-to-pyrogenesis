@@ -69,7 +69,7 @@ def convert_pack(
     generation (civ JSON, actors, simulation templates, technologies) ->
     ``conversion_report.json``.
     """
-    settings = settings or Settings()
+    settings = settings or Settings.from_env()
     LOGGER.info("Starting conversion", extra={"root": str(megaglest_data)})
     pack = discover_pack(megaglest_data)
     _load_factions(pack, factions)
