@@ -18,7 +18,12 @@ from lxml import etree
 from ..core.config import Settings
 from ..core.media_conversion import MediaConversionStats
 from ..megaglest.civ_loader import Faction
-from .common import humanize_name, town_centre_candidate, unmapped_resources
+from .common import (
+    humanize_name,
+    town_centre_candidate,
+    unmapped_resources,
+    write_xml,
+)
 from .mod_builder import sanitize_mod_name
 
 LOGGER = logging.getLogger(__name__)
@@ -164,7 +169,5 @@ def _write_player_template(faction: Faction, mod_dir: Path, civ: str) -> Path:
     _write_emblem(civ, mod_dir)
     path = mod_dir / "simulation/templates/special/players" / f"{civ}.xml"
     path.parent.mkdir(parents=True, exist_ok=True)
-    tree = etree.ElementTree(root)
-    etree.indent(tree, space="  ")
-    path.write_bytes(etree.tostring(tree, xml_declaration=True, encoding="utf-8"))
+    write_xml(path, root)
     return path

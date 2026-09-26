@@ -28,6 +28,7 @@ from .common import (
     resource_cost,
     town_centre_candidate,
     unmapped_resources,
+    write_xml,
 )
 from .mod_builder import sanitize_mod_name
 
@@ -57,11 +58,19 @@ def generate_templates(
         sub = "structures" if unit.is_building else "units"
         path = mod_dir / "simulation/templates" / sub / civ / f"{sanitize_mod_name(name)}.xml"
         path.parent.mkdir(parents=True, exist_ok=True)
-        tree = etree.ElementTree(root)
-        etree.indent(tree, space="  ")
-        path.write_bytes(etree.tostring(tree, xml_declaration=True, encoding="utf-8"))
+        write_xml(path, root)
         written.append(path)
     return written
+
+
+def _insert_alphabetic(root: etree._Element, element: etree._Element) -> None:
+    """Insert ``element`` keeping ``root``'s children alphabetically ordered.
+
+    0 A.D. registers template components in document order, so the generated
+    file has to stay sorted for the engine to see them all.
+    """
+    index = next((i for i, el in enumerate(root) if el.tag > element.tag), len(root))
+    root.insert(index, element)
 
 
 def _parent_for(unit: UnitDef, tc: UnitDef | None) -> str:
@@ -173,10 +182,8 @@ def _add_population_bonus(root: etree._Element, unit: UnitDef) -> None:
         return
     pop = etree.Element("Population")
     etree.SubElement(pop, "Bonus").text = str(-grace)
-    # components are emitted alphabetically (engine registration order);
     # Population sits between Obstruction and Researcher.
-    index = next((i for i, el in enumerate(root) if el.tag > "Population"), len(root))
-    root.insert(index, pop)
+    _insert_alphabetic(root, pop)
 
 
 def _add_footprint(root: etree._Element, unit: UnitDef, stats: MediaConversionStats) -> None:
@@ -396,9 +403,6 @@ def _add_gatherer(root: etree._Element, unit: UnitDef) -> None:
     """
     if not any(skill.type == "harvest" for skill in unit.skills.values()):
         return
-    insert_at = next(
-        (i for i, el in enumerate(root) if el.tag > "ResourceGatherer"), len(root)
-    )
     gatherer = etree.Element("ResourceGatherer")
     etree.SubElement(gatherer, "MaxDistance").text = "2.0"
     etree.SubElement(gatherer, "BaseSpeed").text = "1.0"
@@ -418,7 +422,7 @@ def _add_gatherer(root: etree._Element, unit: UnitDef) -> None:
     capacities = etree.SubElement(gatherer, "Capacities")
     for resource, value in (("food", "10"), ("wood", "10"), ("stone", "10"), ("metal", "10")):
         etree.SubElement(capacities, resource).text = value
-    root.insert(insert_at, gatherer)
+    _insert_alphabetic(root, gatherer)
 
 def _add_promotion(root: etree._Element, civ: str, unit: UnitDef) -> None:
     """Promotion for every unit.
@@ -443,11 +447,10 @@ def _add_trainer(root: etree._Element, civ: str, unit: UnitDef) -> None:
     produced = sorted({cmd.produced_unit for cmd in unit.commands if cmd.produced_unit})
     if not produced:
         return
-    insert_at = next((i for i, el in enumerate(root) if el.tag > "Trainer"), len(root))
     trainer = etree.Element("Trainer")
     entities = etree.SubElement(trainer, "Entities", datatype="tokens")
     entities.text = "\n".join(f"units/{civ}/{name}" for name in produced)
-    root.insert(insert_at, trainer)
+    _insert_alphabetic(root, trainer)
 
 
 def _add_researcher(root: etree._Element, civ: str, unit: UnitDef) -> None:
@@ -493,8 +496,7 @@ def _add_sound(root: etree._Element, civ: str, unit: UnitDef) -> None:
     sound_groups = etree.SubElement(sound, "SoundGroups")
     for key in sorted(groups):
         etree.SubElement(sound_groups, key).text = groups[key]
-    # components are emitted alphabetically (engine registration order)
-    root.insert(next((i for i, el in enumerate(root) if el.tag > "Sound"), len(root)), sound)
+    _insert_alphabetic(root, sound)
 
 
 def _add_visual_actor(

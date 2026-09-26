@@ -22,7 +22,6 @@ fundamentally different.
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -32,6 +31,8 @@ from lxml import etree
 from ..converters.texture_converter import texture_stem
 from ..core.errors import ConversionError
 from ..megaglest.xmlutil import XmlNode, parse_xml
+from .common import add_actor_textures, write_xml
+from .mod_builder import sanitize_mod_name
 
 if TYPE_CHECKING:
     from ..core.config import Settings
@@ -39,13 +40,6 @@ if TYPE_CHECKING:
     from ..megaglest.civ_loader import Faction
 
 LOGGER = logging.getLogger(__name__)
-
-
-def sanitize_mod_name(raw: str) -> str:
-    """Lowercase alnum + underscore/dash form used for output names."""
-    cleaned = re.sub(r"[^a-z0-9_-]+", "_", raw.strip().lower())
-    cleaned = re.sub(r"_+", "_", cleaned).strip("_")
-    return cleaned or "unit"
 
 
 @dataclass
@@ -199,11 +193,6 @@ def _fmt(value: float) -> str:
     return f"{value:.6g}"
 
 
-def _write_xml(path: Path, root: etree._Element) -> None:
-    tree = etree.ElementTree(root)
-    etree.indent(tree, space="  ")
-    path.write_bytes(etree.tostring(tree, xml_declaration=True, encoding="utf-8"))
-
 
 # ---------------------------------------------------------------------------
 # 0 A.D. particle-system writer
@@ -270,7 +259,7 @@ def write_particle_system(
         etree.SubElement(root, "force", y=_fmt(-particle.gravity))
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    _write_xml(out_path, root)
+    write_xml(out_path, root)
 
 
 def maybe_uniform_lifetime(root: etree._Element, center: float, spread: float) -> None:
@@ -452,14 +441,14 @@ def _convert_projectile(
             return
 
     actor_path = props_dir / f"{stem}.xml"
-    _write_projectile_actor(civ, dae, texture, actor_path)
+    _write_mesh_actor(civ, dae, texture, actor_path)
     stats.projectile_actor[model] = actor_rel
     stats.projectile_actor_by_particle[particle.path] = actor_rel
     stats.generated.append(str(actor_path.relative_to(mod_dir_of(props_dir))))
 
     impact = actor_path.with_name(f"{stem}_impact.xml")
     impact_rel = f"props/{civ}/{stem}_impact.xml"
-    _write_impact_actor(civ, dae, texture, impact)
+    _write_mesh_actor(civ, dae, texture, impact)
     stats.projectile_impact_actor[model] = impact_rel
     stats.generated.append(str(impact.relative_to(mod_dir_of(props_dir))))
 
@@ -481,10 +470,12 @@ def _match_model(model: Path, stats) -> Path | None:
     return None
 
 
-def _write_projectile_actor(
-    civ: str, dae: Path, texture: Path | None, out_path: Path
-) -> None:
-    """Actor for a flying projectile mesh (VideoMotion actor, no shadow)."""
+def _write_mesh_actor(civ: str, dae: Path, texture: Path | None, out_path: Path) -> None:
+    """Write a shadowless mesh actor.
+
+    Serves both the flying projectile (a VideoMotion actor) and the impact
+    burst it spawns; the two differed only in their docstring.
+    """
     root = etree.Element("actor", version="1")
     etree.SubElement(root, "castshadow")
     group = etree.SubElement(root, "group")
@@ -492,29 +483,11 @@ def _write_projectile_actor(
     mesh = etree.SubElement(variant, "mesh")
     mesh.text = f"{civ}/{dae.name}"
     if texture is not None:
-        _add_textures(variant, civ, texture)
+        add_actor_textures(variant, civ, texture)
     material = etree.SubElement(root, "material")
     material.text = "no_trans_norm_spec.xml"
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    _write_xml(out_path, root)
-
-
-def _write_impact_actor(
-    civ: str, dae: Path, texture: Path | None, out_path: Path
-) -> None:
-    """Impact actor: a short-lived burst that shows the projectile mesh."""
-    root = etree.Element("actor", version="1")
-    etree.SubElement(root, "castshadow")
-    group = etree.SubElement(root, "group")
-    variant = etree.SubElement(group, "variant", frequency="1", name="Base")
-    mesh = etree.SubElement(variant, "mesh")
-    mesh.text = f"{civ}/{dae.name}"
-    if texture is not None:
-        _add_textures(variant, civ, texture)
-    material = etree.SubElement(root, "material")
-    material.text = "no_trans_norm_spec.xml"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    _write_xml(out_path, root)
+    write_xml(out_path, root)
 
 
 def _write_particle_actor(mod_dir: Path, stem: str) -> None:
@@ -531,14 +504,9 @@ def _write_particle_actor(mod_dir: Path, stem: str) -> None:
     group = etree.SubElement(root, "group")
     variant = etree.SubElement(group, "variant", name="Base")
     etree.SubElement(variant, "particles", file=f"{stem}.xml")
-    _write_xml(out, root)
+    write_xml(out, root)
 
 
-def _add_textures(variant: etree._Element, civ: str, texture: Path) -> None:
-    textures = etree.SubElement(variant, "textures")
-    etree.SubElement(textures, "texture", file=f"units/{civ}/{texture.name}", name="baseTex")
-    etree.SubElement(textures, "texture", file="default_norm.png", name="normTex")
-    etree.SubElement(textures, "texture", file="null_black.dds", name="specTex")
 
 
 def _wire_unit_particles(

@@ -20,6 +20,7 @@ from pathlib import Path
 from lxml import etree
 
 from ..converters.rig import Rig
+from .common import write_xml
 
 
 def write_skeletons(entries: list[tuple[str, Rig]], output_dir: Path, civ: str) -> Path | None:
@@ -46,7 +47,5 @@ def write_skeletons(entries: list[tuple[str, Rig]], output_dir: Path, civ: str) 
             etree.SubElement(bone_el, "target").text = bone
     path = output_dir / f"{civ}.xml"
     path.parent.mkdir(parents=True, exist_ok=True)
-    tree = etree.ElementTree(root)
-    etree.indent(tree, space="  ")
-    path.write_bytes(etree.tostring(tree, xml_declaration=True, encoding="utf-8"))
+    write_xml(path, root)
     return path

@@ -610,7 +610,7 @@ def _add_mesh_geometry(
         p = etree.SubElement(triangles, _tag("p"))
         p.text = " ".join(f"{i} {i} {i}" for i in mesh.indices[: n_triangles * 3])
 
-    _add_double_sided_extra(geometry, mesh)
+    _add_double_sided_extra(geometry, mesh.two_sided)
     _append_geometries(root, geometry)
 
 
@@ -698,17 +698,13 @@ def _add_merged_geometry(
         p = etree.SubElement(triangles, _tag("p"))
         p.text = " ".join(f"{i} {i} {i}" for i in indices)
 
-    if any(m.two_sided for m in meshes):
-        extra = etree.SubElement(geometry, _tag("extra"))
-        technique = etree.SubElement(extra, _tag("technique"))
-        technique.set("profile", "MAYA")
-        etree.SubElement(technique, _tag("double_sided")).text = "1"
+    _add_double_sided_extra(geometry, any(m.two_sided for m in meshes))
     _append_geometries(root, geometry)
 
 
-def _add_double_sided_extra(geometry: etree._Element, mesh: g3dlib.Mesh) -> None:
+def _add_double_sided_extra(geometry: etree._Element, two_sided: bool) -> None:
     """Record two-sidedness as geometry metadata (Phase 4 material concern)."""
-    if mesh.two_sided:
+    if two_sided:
         extra = etree.SubElement(geometry, _tag("extra"))
         technique = etree.SubElement(extra, _tag("technique"))
         technique.set("profile", "MAYA")

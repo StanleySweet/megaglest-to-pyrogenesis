@@ -23,7 +23,7 @@ from lxml import etree
 from ..core.config import Settings
 from ..core.media_conversion import MediaConversionStats, engine_animation_names
 from ..megaglest.civ_loader import Faction, UnitDef
-from .common import material_for
+from .common import add_actor_textures, material_for, write_xml
 from .mod_builder import sanitize_mod_name
 
 LOGGER = logging.getLogger(__name__)
@@ -51,7 +51,7 @@ def generate_actors(
         root = _build_actor(civ, unit, base, cons, des, stats, settings, mod_dir, written)
         path = mod_dir / "art/actors" / sub / civ / f"{sanitize_mod_name(name)}.xml"
         path.parent.mkdir(parents=True, exist_ok=True)
-        _write_xml(path, root)
+        write_xml(path, root)
         written.append(path)
         if unit.is_building and cons is not None:
             fndn = _build_foundation_actor(civ, unit, cons, des, stats, settings, mod_dir)
@@ -112,7 +112,7 @@ def _build_actor(
     mesh.text = f"{civ}/{mesh_daes[0].name}"
     texture = _dae_texture(mesh_daes[0], g3d, stats)
     if texture is not None:
-        _add_textures(variant, civ, texture)
+        add_actor_textures(variant, civ, texture)
     # engine actor grammar (0.28 actor.rng): <props> lives inside a
     # <variant>, never at actor level (CXeromyces rejects the latter)
     if props is not None:
@@ -165,24 +165,12 @@ def _add_health_group(
             mesh.text = f"{civ}/{daes[0].name}"
             texture = _dae_texture(daes[0], des, stats)
             if texture is not None:
-                _add_textures(death, civ, texture)
+                add_actor_textures(death, civ, texture)
 
 
 def _dae_texture(dae: Path, g3d: Path, stats: MediaConversionStats) -> Path | None:
     """baseTex for one DAE: its own texture group, else the model's first."""
     return stats.mesh_textures.get(dae) or stats.model_texture.get(g3d)
-def _add_textures(variant: etree._Element, civ: str, texture: Path) -> None:
-    textures = etree.SubElement(variant, "textures")
-    # Actor <texture file> refs resolve against art/textures/skins/
-    # (ObjectBase.cpp:264), which is where the converter writes its PNGs, so
-    # the ref is units/{civ}/{name}.png (no skins/ prefix).
-    etree.SubElement(textures, "texture", file=f"units/{civ}/{texture.name}", name="baseTex")
-    # Placeholder norm/spec slots: public ships skins/default_norm.png and
-    # skins/null_black.dds (cached DDS) exactly for this; its own actors
-    # reference them the same way. The slots keep CModelDefImporter from
-    # warning/falling back when a material asks for normTex/specTex.
-    etree.SubElement(textures, "texture", file="default_norm.png", name="normTex")
-    etree.SubElement(textures, "texture", file="null_black.dds", name="specTex")
 
 
 def _add_props(
@@ -218,7 +206,7 @@ def _add_props(
             prop_actor = _prop_actor(
                 civ, dae, _dae_texture(dae, g3d, stats), material, anims
             )
-            _write_xml(prop_path, prop_actor)
+            write_xml(prop_path, prop_actor)
             written.append(prop_path)
         etree.SubElement(props, "prop", actor=f"props/{civ}/{dae.stem}.xml", attachpoint="root")
     return props
@@ -267,7 +255,7 @@ def _build_foundation_actor(
         mesh.text = f"{civ}/{cons_daes[index].name}"
         texture = _dae_texture(cons_daes[index], cons, stats)
         if texture is not None:
-            _add_textures(variant, civ, texture)
+            add_actor_textures(variant, civ, texture)
     death = etree.SubElement(group, "variant", name="death")
     if des is not None:
         des_daes = stats.models[des].mesh_daes
@@ -276,7 +264,7 @@ def _build_foundation_actor(
             mesh.text = f"{civ}/{des_daes[0].name}"
             texture = _dae_texture(des_daes[0], des, stats)
             if texture is not None:
-                _add_textures(death, civ, texture)
+                add_actor_textures(death, civ, texture)
     anim_group = etree.SubElement(root, "group")
     etree.SubElement(anim_group, "variant", frequency="1", name="Idle")
     etree.SubElement(anim_group, "variant", name="scaffold")
@@ -284,7 +272,7 @@ def _build_foundation_actor(
     material.text = _material_for(cons, stats, settings)
     path = mod_dir / "art/actors/structures" / civ / f"fndn_{sanitize_mod_name(unit.name)}.xml"
     path.parent.mkdir(parents=True, exist_ok=True)
-    _write_xml(path, root)
+    write_xml(path, root)
     return path
 
 
@@ -302,7 +290,7 @@ def _prop_actor(
     mesh = etree.SubElement(variant, "mesh")
     mesh.text = f"{civ}/{dae.name}"
     if texture is not None:
-        _add_textures(variant, civ, texture)
+        add_actor_textures(variant, civ, texture)
     if animations:
         container = etree.SubElement(variant, "animations")
         for name in sorted(animations):
@@ -375,8 +363,3 @@ def _attack_start_time(unit: UnitDef, name: str) -> float:
             return skill.attack.start_time
     return 0.0
 
-
-def _write_xml(path: Path, root: etree._Element) -> None:
-    tree = etree.ElementTree(root)
-    etree.indent(tree, space="  ")
-    path.write_bytes(etree.tostring(tree, xml_declaration=True, encoding="utf-8"))

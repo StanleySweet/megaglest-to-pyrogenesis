@@ -13,6 +13,9 @@ are documented heuristics, chosen so a typical pack lands in 0 A.D.'s ranges
 from __future__ import annotations
 
 import re
+from pathlib import Path
+
+from lxml import etree
 
 from ..megaglest.civ_loader import Faction, UnitDef
 
@@ -25,6 +28,34 @@ TILE_METERS = 4.0
 # resource; it maps to population instead (see ``grace_amount``), so it never
 # enters ``Cost/Resources``.
 RESOURCE_MAP = {"gold": "metal", "wood": "wood", "stone": "stone", "food": "food"}
+
+
+def write_xml(path: Path, root: etree._Element) -> None:
+    """Serialise ``root`` to ``path`` as indented UTF-8 XML.
+
+    Every generator's output goes through here, so the declaration and
+    two-space indentation stay identical across the mod.
+    """
+    tree = etree.ElementTree(root)
+    etree.indent(tree, space="  ")
+    path.write_bytes(etree.tostring(tree, xml_declaration=True, encoding="utf-8"))
+
+
+def add_actor_textures(variant: etree._Element, civ: str, texture: Path) -> None:
+    """Declare an actor variant's texture slots.
+
+    The baseTex ref resolves against art/textures/skins/ (ObjectBase.cpp:264),
+    which is where the converter writes its PNGs, so the ref is
+    units/{civ}/{name}.png with no skins/ prefix. The normTex/specTex slots are
+    placeholders: public ships skins/default_norm.png and skins/null_black.dds
+    (cached DDS) exactly for this, and its own actors reference them the same
+    way. The slots keep CModelDefImporter from warning or falling back when a
+    material asks for them.
+    """
+    textures = etree.SubElement(variant, "textures")
+    etree.SubElement(textures, "texture", file=f"units/{civ}/{texture.name}", name="baseTex")
+    etree.SubElement(textures, "texture", file="default_norm.png", name="normTex")
+    etree.SubElement(textures, "texture", file="null_black.dds", name="specTex")
 
 
 def humanize_name(raw: str) -> str:
