@@ -465,6 +465,36 @@ def test_kmeans_degenerate_cloud_keeps_requested_clusters() -> None:
     assert set(labels.tolist()) == {0}
 
 
+def test_dae_output_is_byte_reproducible(tmp_path: Path) -> None:
+    """Converting the same model twice yields identical bytes.
+
+    The asset block used to stamp the wall clock, so a fresh output hash could
+    not distinguish a converter change from a new second.
+    """
+    converter = MeshConverter()
+    first = converter.convert_g3d_to_dae(G3D_FIXTURES / "gold.g3d", tmp_path / "a", "demo")
+    second = converter.convert_g3d_to_dae(G3D_FIXTURES / "gold.g3d", tmp_path / "b", "demo")
+    assert [p.name for p in first.mesh_daes] == [p.name for p in second.mesh_daes]
+    for one, two in zip(first.mesh_daes, second.mesh_daes, strict=True):
+        assert one.read_bytes() == two.read_bytes(), f"{one.name} differs between runs"
+
+
+def test_dae_asset_block_honours_source_date_epoch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SOURCE_DATE_EPOCH sets <created>/<modified>; a junk value falls back."""
+    converter = MeshConverter()
+    for value, expected in [
+        ("1700000000", "2023-11-14T22:13:20Z"),
+        ("not-a-number", "1970-01-01T00:00:00Z"),
+    ]:
+        monkeypatch.setenv("SOURCE_DATE_EPOCH", value)
+        result = converter.convert_g3d_to_dae(G3D_FIXTURES / "gold.g3d", tmp_path / value, "demo")
+        text = result.mesh_daes[0].read_text(encoding="utf-8")
+        assert f"<created>{expected}</created>" in text
+        assert f"<modified>{expected}</modified>" in text
+
+
 def test_kabsch_fits_rotation_without_scale() -> None:
     """A rotated point cloud fits to the exact rotation; identity is exact."""
     from megaglest_to_0ad.converters.rig import _kabsch

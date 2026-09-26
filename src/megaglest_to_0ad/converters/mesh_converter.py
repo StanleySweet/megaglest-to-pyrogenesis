@@ -28,6 +28,7 @@ from __future__ import annotations
 import io
 import logging
 import math
+import os
 import re
 import struct
 import sys
@@ -487,8 +488,22 @@ def _new_collada_root() -> etree._Element:
     )
 
 
+def _asset_timestamp() -> str:
+    """Value for ``<created>``/``<modified>``, reproducible across runs.
+
+    Stamping the wall clock made two conversions of the same model differ
+    byte-for-byte, so output hashes could not tell a code change from a new
+    second. Honours ``SOURCE_DATE_EPOCH`` (the reproducible-builds standard,
+    as used by Debian and Nix) and otherwise reports the epoch, which is
+    stable and honestly says "no meaningful build time".
+    """
+    epoch = os.environ.get("SOURCE_DATE_EPOCH", "").strip()
+    seconds = int(epoch) if epoch.isdigit() else 0
+    return datetime.fromtimestamp(seconds, UTC).strftime(_ISO_FORMAT)
+
+
 def _add_asset(root: etree._Element, civ: str) -> None:
-    now = datetime.now(UTC).strftime(_ISO_FORMAT)
+    now = _asset_timestamp()
     asset = etree.SubElement(root, _tag("asset"))
     contributor = etree.SubElement(asset, _tag("contributor"))
     etree.SubElement(contributor, _tag("author")).text = f"megaglest-to-pyrogenesis ({civ})"
