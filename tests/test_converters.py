@@ -529,8 +529,10 @@ def test_fit_group_frames_expands_base_weights(tmp_path: Path) -> None:
     model = read_g3d(G3D_FIXTURES / "treant_idle.g3d")
     groups = [list(range(len(model.meshes)))]
     rig = build_rig(model, groups, 7, "test_root")
-    frames = fit_group_frames(model, model, rig, use_base_weights=True)
+    frames, weights = fit_group_frames(model, model, rig, use_base_weights=True)
     assert len(frames) == 19
+    # the returned weights are what the DAE skin must store
+    assert weights == rig.groups[0].vertex_weights
     assert len(frames[0]) == 7
     for r, _t in frames[0]:
         assert r == pytest.approx([1, 0, 0, 0, 1, 0, 0, 0, 1], abs=1e-6)
@@ -599,13 +601,13 @@ def test_fit_group_frames_aligns_offset_model() -> None:
     rig = build_rig(model, groups, 7, "test_root")
 
     # Same model → use_base_weights=True: frame 0 must be identity.
-    frames_same = fit_group_frames(model, model, rig, use_base_weights=True)
+    frames_same, _ = fit_group_frames(model, model, rig, use_base_weights=True)
     for r, _t in frames_same[0]:
         assert r == pytest.approx([1, 0, 0, 0, 1, 0, 0, 0, 1], abs=1e-6)
 
     # Foreign model (same data, but use_base_weights=False): frame 0 still
     # identity, and frame 1 transforms are finite (no NaN/inf from bad fits).
-    frames_foreign = fit_group_frames(model, model, rig, use_base_weights=False)
+    frames_foreign, _ = fit_group_frames(model, model, rig, use_base_weights=False)
     for r, _t in frames_foreign[0]:
         assert r == pytest.approx([1, 0, 0, 0, 1, 0, 0, 0, 1], abs=1e-6)
     for f in range(1, len(frames_foreign)):

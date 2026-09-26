@@ -405,19 +405,26 @@ class MeshConverter:
         group = rig.groups[group_index]
         meshes = [base_model.meshes[i] for i in group.mesh_indices]
         _add_merged_geometry(root, gid, meshes)
-        _add_skin(root, gid, rig, group_index)
+        # Fit before writing the skin: the fit decides which weights the bones
+        # were solved against, and those are the weights the skin must store
+        # or the file cannot reproduce its own animation.
+        frames, vertex_weights = fit_group_frames(
+            base_model,
+            anim_model,
+            rig,
+            group_index=group_index,
+            use_base_weights=(
+                anim_model is base_model if use_base_weights is None else use_base_weights
+            ),
+        )
+        _add_skin(root, gid, rig, group_index, vertex_weights=vertex_weights)
         _add_animations(
             root,
             gid,
             rig,
-            base_model,
-            anim_model,
+            frames,
             anim_speed,
             loop,
-            use_base_weights=(
-                anim_model is base_model if use_base_weights is None else use_base_weights
-            ),
-            group_index=group_index,
         )
         _add_skinned_scene(root, gid, rig)
         _add_scene(root)
@@ -713,14 +720,25 @@ def _add_double_sided_extra(geometry: etree._Element, mesh: g3dlib.Mesh) -> None
         etree.SubElement(technique, _tag("double_sided")).text = "1"
 
 
-def _add_skin(root: etree._Element, gid: str, rig: Rig, group_index: int = 0) -> None:
+def _add_skin(
+    root: etree._Element,
+    gid: str,
+    rig: Rig,
+    group_index: int = 0,
+    vertex_weights: list[list[tuple[int, float]]] | None = None,
+) -> None:
     """Skin controller: identity bind pose + the rig's joint weights.
 
     The bind shape and every joint bind matrix are identity, so the PMD's
     bind pose is identity and runtime skinning (animated pose x inverse
     bind) applies the animation transforms directly. Weights are the rig's
-    per-vertex top-4 influences, normalized.
+    per-vertex top-4 influences, normalized -- or ``vertex_weights`` when the
+    caller solved the bone fits against a different set (a foreign animation
+    reweights the rig's clusters; the file has to hold the fitted ones).
     """
+    if vertex_weights is None:
+        vertex_weights = rig.groups[group_index].vertex_weights
+
     library = root.find(_tag("library_controllers"))
     if library is None:
         library = etree.Element(_tag("library_controllers"))
@@ -759,9 +777,9 @@ def _add_skin(root: etree._Element, gid: str, rig: Rig, group_index: int = 0) ->
     weights: list[float] = []
     vcounts: list[int] = []
     vertex_pairs: list[int] = []
-    for vertex_weights in rig.groups[group_index].vertex_weights:
-        vcounts.append(len(vertex_weights))
-        for bone, weight in vertex_weights:
+    for vertex_weights_row in vertex_weights:
+        vcounts.append(len(vertex_weights_row))
+        for bone, weight in vertex_weights_row:
             weights.append(weight)
             # Cluster b occupies bone slot b+1 (slot 0 is the root joint).
             vertex_pairs.append(bone + 1)
@@ -870,29 +888,20 @@ def _add_animations(
     root: etree._Element,
     gid: str,
     rig: Rig,
-    base_model: g3dlib.G3DModel,
-    anim_model: g3dlib.G3DModel,
+    frames: list[list[tuple[list[float], list[float]]]],
     anim_speed: float,
     loop: bool,
-    use_base_weights: bool = False,
-    group_index: int = 0,
 ) -> None:
     """One <animation> per joint: time-sampled world transform channels.
 
     Keyframe times spread the model's frames over one MegaGlest animation
     cycle (``100 / anim_speed`` seconds); looping animations append a
     closing keyframe with the rest pose so the PSA wraps seamlessly.
-    Transforms are per-bone rigid fits (see ``fit_group_frames``).
+    Transforms are the per-bone rigid fits from ``fit_group_frames``, which
+    the caller has already solved against the weights written by
+    ``_add_skin``.
     """
-    group = rig.groups[group_index]
-    base_meshes = [base_model.meshes[i] for i in group.mesh_indices]
-    frame_count = min(m.frame_count for m in base_meshes)
-    anim_frame_count = min(m.frame_count for m in anim_model.meshes)
-    if anim_frame_count > 0:
-        frame_count = anim_frame_count
-    frames = fit_group_frames(
-        base_model, anim_model, rig, group_index=group_index, use_base_weights=use_base_weights
-    )
+    frame_count = len(frames)
     duration = animation_duration(anim_speed)
 
     times: list[float] = []

@@ -118,7 +118,9 @@ def build_rig(
             # A static group inside an animated model: no displacement data.
             # Fall back to spatial clustering so the DAE still skins.
             frame_count = 1
-        features, rest = _features(meshes, frame_count)
+        stack = _frame_stack(meshes, frame_count)
+        rest = stack[0]
+        features = _features(rest, stack)
         k = _cluster_count(len(rest), bone_count - 1)
         centroids, _ = _kmeans(features, k)
         soft_matrix = _soft_weight_matrix(features, centroids)
@@ -146,21 +148,28 @@ def fit_group_frames(
     rig: Rig,
     group_index: int = 0,
     use_base_weights: bool = False,
-) -> list[list[tuple[list[float], list[float]]]]:
+) -> tuple[
+    list[list[tuple[list[float], list[float]]]], list[list[tuple[int, float]]]
+]:
     """Per-frame rigid transforms for ``rig``'s group ``group_index``.
 
-    Returns ``frames`` with ``frames[f][b]`` = ``(R, t)`` (rotation as 9
-    row-major floats, translation as 3 floats) for bone ``b`` in frame ``f``.
-    Frame 0 is the rest pose (identity).
+    Returns ``(frames, vertex_weights)`` where ``frames[f][b]`` = ``(R, t)``
+    (rotation as 9 row-major floats, translation as 3 floats) for bone ``b``
+    in frame ``f``, and ``vertex_weights[i]`` is the top-4 ``(bone, weight)``
+    blend for vertex ``i``. Frame 0 is the rest pose (identity).
 
-    ``base_model`` supplies the rest vertices and skin weights (matching the
-    DAE geometry).  ``anim_model`` supplies the per-frame morph targets.
-    When the two models differ, nearest-neighbour displacement transfer maps
-    the animation morphs onto the base model's vertices so that the bone
-    transforms correctly deform the DAE geometry.  ``use_base_weights``
-    reuses the exact k-means weights from rig build (same-model fast path).
-    Bone 0 (root) carries the whole-model rigid fit; no vertex is weighted
-    to it.
+    ``base_model`` supplies the rest vertices (matching the DAE geometry).
+    ``anim_model`` supplies the per-frame morph targets. When the two models
+    differ, nearest-neighbour displacement transfer maps the animation morphs
+    onto the base model's vertices so that the bone transforms correctly
+    deform the DAE geometry. ``use_base_weights`` reuses the exact k-means
+    weights from rig build (same-model fast path). Bone 0 (root) carries the
+    whole-model rigid fit; no vertex is weighted to it.
+
+    The returned ``vertex_weights`` are the ones the bone fits were solved
+    against, so the caller must write these into the DAE skin rather than the
+    rig's: linear blend skinning only reproduces the fit if the file's weights
+    and the fitted weights are the same numbers.
     """
     group = rig.groups[group_index]
     base_meshes = [base_model.meshes[i] for i in group.mesh_indices]
@@ -196,18 +205,33 @@ def fit_group_frames(
             - anim_rest[None, nn_map, :]
         )
 
-    if use_base_weights:
-        # Expand the top-4 (bone, weight) pairs into full per-bone vectors so
-        # bone b+1 below reads cluster b's weight (one row per bone, matching
-        # _kabsch_batch's (M, verts) weight layout).
-        weights = np.zeros((rig.part_count, n_base), dtype=np.float64)
-        for i, vertex_weights in enumerate(group.vertex_weights):
-            for bone, weight in vertex_weights:
-                weights[bone, i] = weight
+    if use_base_weights or frame_count <= 1:
+        # Nothing to re-cluster: the rig's own partition is what the DAE stores.
+        vertex_weights = group.vertex_weights
     else:
-        weights = _assign_weights(
-            base_rest, np.asarray(group.rest_centroids, dtype=np.float64)
-        ).T
+        # Weight by how each vertex *moves* in the trajectory being
+        # transferred, not by where it happens to sit at rest. The bone fits
+        # below are solved against target_stack, so the weights have to
+        # describe that same motion: the rig's clusters were built on the base
+        # model's own animation and say nothing about this one. Assigning by
+        # rest proximity instead leaves the worst vertex most of a frame's
+        # displacement from the source, and puts seam vertices on bones that
+        # disagree about which way to move, which reads as flicker.
+        features = _features(base_rest, target_stack)
+        centroids, _ = _kmeans(features, _cluster_count(n_base, rig.part_count))
+        soft_matrix = _soft_weight_matrix(features, centroids)
+        vertex_weights = [
+            _top_influences(soft_matrix[i]) for i in range(soft_matrix.shape[0])
+        ]
+
+    # Expand the top-4 (bone, weight) pairs into full per-bone vectors so bone
+    # b+1 below reads cluster b's weight (one row per bone, matching
+    # _kabsch_batch's (M, verts) weight layout). The DAE stores these same
+    # pairs, so what the file reconstructs is exactly what was fitted here.
+    weights = np.zeros((rig.part_count, n_base), dtype=np.float64)
+    for i, pairs in enumerate(vertex_weights):
+        for bone, weight in pairs:
+            weights[bone, i] = weight
 
     root_rot, root_t = _kabsch_batch(base_rest, target_stack, np.ones(n_base))
     bone_rot, bone_t = _kabsch_batch(base_rest, target_stack, weights)
@@ -227,7 +251,7 @@ def fit_group_frames(
             for b in range(rig.part_count)
         )
         frames.append(transforms)
-    return frames
+    return frames, vertex_weights
 
 
 def animation_duration(anim_speed: float) -> float:
@@ -269,21 +293,18 @@ def _frame_stack(meshes: Sequence[g3dlib.Mesh], frame_count: int) -> np.ndarray:
     return np.concatenate(blocks, axis=1)
 
 
-def _features(
-    meshes: Sequence[g3dlib.Mesh], frame_count: int
-) -> tuple[np.ndarray, np.ndarray]:
+def _features(rest: np.ndarray, stack: np.ndarray) -> np.ndarray:
     """Per-vertex feature vectors: rest position + per-frame displacements.
 
-    Dimensions are standardized (mean 0, std 1 per dimension) so rest
-    position and motion contribute comparably; ``rest`` (the frame-0
-    positions) is returned separately for the DAE and for proximity
-    assignment.
+    ``stack`` is the (frames, verts, 3) trajectory the rig has to reproduce --
+    a baked model's own animation, or the transferred one when a neighbouring
+    model supplies the motion -- so the clusters describe the motion actually
+    being fitted. Dimensions are standardized (mean 0, std 1 per dimension) so
+    rest position and motion contribute comparably.
     """
-    rest = _frame_stack(meshes, 1)[0]
-    if frame_count <= 1:
+    if len(stack) <= 1:
         # Static fallback: cluster on the raw rest positions only.
-        return rest.copy(), rest
-    stack = _frame_stack(meshes, frame_count)
+        return rest.copy()
     deltas = stack[1:] - rest  # (frames-1, verts, 3)
     raw = np.concatenate(
         [rest, deltas.transpose(1, 0, 2).reshape(len(rest), -1)], axis=1
@@ -294,7 +315,7 @@ def _features(
     std = np.sqrt(variance)
     std_ok = std > 1e-9
     features[:, std_ok] = (raw[:, std_ok] - mean[std_ok]) / std[std_ok]
-    return features, rest
+    return features
 
 
 def _kmeans(features: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
