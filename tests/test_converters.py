@@ -433,6 +433,38 @@ def test_animation_duration_semantics() -> None:
     assert animation_duration(-5.0) == 1.0
 
 
+def test_kmeans_first_iteration_always_updates() -> None:
+    """k=1 must settle on the data mean, not the k-means++ seed.
+
+    The convergence check compared against a zero-filled label array, so an
+    all-zero assignment read as "nothing changed" and the loop broke before
+    the first centroid update -- leaving the seed in place.
+    """
+    import numpy as np
+
+    from megaglest_to_0ad.converters.rig import _kmeans
+
+    features = np.array(
+        [[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 3.0, 0.0], [1.0, 1.0, 5.0]]
+    )
+    centroids, labels = _kmeans(features, 1)
+    assert centroids[0] == pytest.approx(features.mean(axis=0))
+    assert set(labels.tolist()) == {0}
+
+
+def test_kmeans_degenerate_cloud_keeps_requested_clusters() -> None:
+    """Coincident points cannot be split, but every requested cluster survives."""
+    import numpy as np
+
+    from megaglest_to_0ad.converters.rig import _kmeans
+
+    features = np.zeros((6, 3))
+    centroids, labels = _kmeans(features, 3)
+    assert len(centroids) == 3
+    assert np.isfinite(centroids).all()
+    assert set(labels.tolist()) == {0}
+
+
 def test_kabsch_fits_rotation_without_scale() -> None:
     """A rotated point cloud fits to the exact rotation; identity is exact."""
     from megaglest_to_0ad.converters.rig import _kabsch

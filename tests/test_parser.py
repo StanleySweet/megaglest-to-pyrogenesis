@@ -10,6 +10,17 @@ from megaglest_to_0ad.core.errors import PackStructureError
 from megaglest_to_0ad.megaglest.parser import LayoutKind, discover_pack
 
 
+def test_pack_rejects_undeclared_attribute(layout_b_pack: Path) -> None:
+    """slots=True turns a misspelled field into an error here, not on load.
+
+    ``commondata_dir`` was assigned without ever being declared, which only
+    worked because the dataclass had no slots.
+    """
+    pack = discover_pack(layout_b_pack)
+    with pytest.raises(AttributeError):
+        pack.commONData_dir = None  # type: ignore[attr-defined]
+
+
 def test_discover_flat_layout(layout_b_pack: Path) -> None:
     pack = discover_pack(layout_b_pack)
     assert pack.layout is LayoutKind.FLAT

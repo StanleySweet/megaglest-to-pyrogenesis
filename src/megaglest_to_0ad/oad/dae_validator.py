@@ -138,7 +138,7 @@ def validate_animation_dae(path: Path) -> list[str]:
     joint_ids = {
         n.get("id")
         for n in root.xpath(
-            "//c:library_visual_scenes//c:node[(@c:type='JOINT') or (@type='JOINT')]",
+            "//c:library_visual_scenes//c:node[@type='JOINT']",
             namespaces=_NS,
         )
     }

@@ -33,9 +33,13 @@ class LayoutKind(Enum):
     FLAT = "flat"
 
 
-@dataclass
+@dataclass(slots=True)
 class MegaglestPack:
-    """A discovered MegaGlest pack (structure only; factions load lazily)."""
+    """A discovered MegaGlest pack (structure only; factions load lazily).
+
+    ``slots=True`` so a write to an undeclared attribute fails here rather
+    than silently succeeding until someone tightens the class.
+    """
 
     root: Path
     layout: LayoutKind
@@ -43,9 +47,9 @@ class MegaglestPack:
     factions_dir: Path
     tech_root: Path | None = None
     tech_xml: Path | None = None
-    factions: dict[str, Faction] = field(default_factory=dict)
+    commondata_dir: Path | None = None
     resources_dir: Path | None = None
-    factions: dict[str, object] = field(default_factory=dict)
+    factions: dict[str, Faction] = field(default_factory=dict)
 
     def macro_map(self) -> dict[str, Path]:
         """Path macros used in asset references (``$COMMONDATAPATH`` etc.)."""

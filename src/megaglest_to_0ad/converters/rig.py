@@ -339,7 +339,10 @@ def _kmeans(features: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
         centroids.append(features[index].copy())
 
     centroids_arr: np.ndarray = np.asarray(centroids)
-    labels = np.zeros(n, dtype=np.int64)
+    # -1 cannot collide with a real cluster index, so the first pass always
+    # counts as a change. Zero would break out before any centroid update
+    # whenever every point's nearest seed happens to be cluster 0.
+    labels = np.full(n, -1, dtype=np.int64)
     for _ in range(_KMEANS_ITERATIONS):
         d2 = ((features[:, None, :] - centroids_arr[None, :, :]) ** 2).sum(-1)
         best = d2.argmin(-1)
