@@ -320,6 +320,9 @@ def _add_identity(root: etree._Element, civ: str, unit: UnitDef) -> None:
 def _add_obstruction(root: etree._Element, unit: UnitDef, stats: MediaConversionStats) -> None:
     width, depth, _height = _placement_dims(unit, stats)
     obstruction = etree.SubElement(root, "Obstruction")
+    # 0.28's Obstruction schema rejects a Static side under 1.5 m
+    # (minInclusive in CCmpObstruction.cpp), and small props measure less.
+    width, depth = max(width, 1.5), max(depth, 1.5)
     etree.SubElement(obstruction, "Static", width=_fmt(width), depth=_fmt(depth))
     # The 0.28+ Obstruction schema requires the full block-flag set.
     for name, value in (

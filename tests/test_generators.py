@@ -655,6 +655,30 @@ def test_template_footprint_from_model_bbox(tmp_path: Path) -> None:
     assert static.get("width") == "3.5" and static.get("depth") == "2.2"
 
 
+def test_template_static_obstruction_meets_engine_minimum(tmp_path: Path) -> None:
+    """A prop smaller than 1.5 m still gets a Static obstruction 0.28 accepts.
+
+    megapack's persian snake_basket measured 1.3 m and failed to load.
+    """
+    g3d = G3D_FIXTURES / "gold.g3d"
+    dae = tmp_path / "art/meshes/demo/gold.dae"
+    basket = _unit(
+        "basket",
+        is_building=True,
+        skills={"stop": SkillDef(type="stop", name="s", animation=g3d)},
+        parameters={"size": 2, "height": 1.0},
+    )
+    faction = _faction_with(tmp_path, {"basket": basket})
+    stats = MediaConversionStats(
+        models={g3d: ConvertedMesh(g3d_path=g3d, mesh_daes=[dae], footprint=(1.3, 0.8, 1.0))}
+    )
+    generate_templates(faction, tmp_path, stats, Settings())
+    root = etree.parse(tmp_path / "simulation/templates/structures/demo/basket.xml").getroot()
+    static = root.find("Obstruction/Static")
+    assert static.get("width") == "1.5" and static.get("depth") == "1.5"
+    assert root.find("Footprint/Square").get("width") == "1.3"
+
+
 # ---------------------------------------------------------------------------
 # Techs
 # ---------------------------------------------------------------------------
