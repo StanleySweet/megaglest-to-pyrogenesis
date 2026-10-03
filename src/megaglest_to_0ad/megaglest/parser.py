@@ -135,3 +135,36 @@ def _first_xml(directory: Path, preferred_stem: str) -> Path | None:
     return matches[0] if matches else None
 
 
+
+
+# Licence and attribution files: MegaGlest's own data ships them as
+# docs/LICENSE.data.txt, COPYRIGHT.data.txt, AUTHORS.data.txt,
+# README.data-license.txt and cc-by-sa-3.0-unported.txt.
+_LICENSE_PREFIXES = ("license", "licence", "copying", "copyright", "authors", "credits", "cc-by")
+_LICENSE_SUFFIXES = ("", ".txt", ".md")
+
+
+def find_license_files(pack: MegaglestPack) -> list[Path]:
+    """Licence and attribution files that cover ``pack``'s data.
+
+    Looks in the pack's own directory and in the ``docs/`` folder of the game
+    data it sits in, which is ``root/docs`` for the classic layout and two
+    levels above a flat pack under ``techs/``.
+    """
+    dirs = [pack.root, pack.root / "docs", pack.root.parent.parent / "docs"]
+    if pack.tech_root is not None:
+        dirs.append(pack.tech_root)
+    found: list[Path] = []
+    for directory in dict.fromkeys(dirs):
+        if not directory.is_dir():
+            continue
+        for path in sorted(directory.iterdir()):
+            name = path.name.lower()
+            if (
+                path.is_file()
+                and path.suffix.lower() in _LICENSE_SUFFIXES
+                and (name.startswith(_LICENSE_PREFIXES) or "license" in name)
+                and path not in found
+            ):
+                found.append(path)
+    return found

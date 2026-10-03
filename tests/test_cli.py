@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
+import shutil
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from megaglest_to_0ad.main import cli
@@ -198,3 +201,38 @@ def test_configure_logging_is_idempotent() -> None:
         assert root.handlers == before, "a second call must not add a handler"
     finally:
         root.handlers = before
+
+
+def test_convert_ships_game_data_licence(layout_b_pack: Path, tmp_path: Path) -> None:
+    """A pack under ``techs/`` gets the game data's ``docs/`` licence files.
+
+    MegaGlest's data is CC-BY-SA 3.0, which requires attribution and the
+    licence terms to travel with a derivative, so the mod must carry them.
+    """
+    data = tmp_path / "glest_game"
+    pack = data / "techs" / "layout_b"
+    shutil.copytree(layout_b_pack, pack)
+    (data / "docs").mkdir()
+    (data / "docs" / "LICENSE.data.txt").write_text("CC-BY-SA 3.0")
+    (data / "docs" / "AUTHORS.data.txt").write_text("authors")
+    (data / "docs" / "README.txt").write_text("not a licence")
+
+    result = CliRunner().invoke(
+        cli, ["convert", "--megaglest-data", str(pack), "--output", str(tmp_path / "out")]
+    )
+    assert result.exit_code == 0, result.output
+    shipped = sorted(p.name for p in (tmp_path / "out" / "layout_b" / "licenses").iterdir())
+    assert shipped == ["AUTHORS.data.txt", "LICENSE.data.txt"]
+
+
+def test_convert_warns_when_no_licence_found(
+    layout_b_pack: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.WARNING):
+        result = CliRunner().invoke(
+            cli,
+            ["convert", "--megaglest-data", str(layout_b_pack), "--output", str(tmp_path)],
+        )
+    assert result.exit_code == 0, result.output
+    assert not (tmp_path / "layout_b" / "licenses").exists()
+    assert "No licence or attribution files" in caplog.text

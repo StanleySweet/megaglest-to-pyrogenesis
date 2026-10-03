@@ -13,7 +13,7 @@ from ..core.errors import PackStructureError
 from ..core.media_conversion import convert_faction_media
 from ..megaglest.asset_inventory import AssetInventory, build_inventory
 from ..megaglest.civ_loader import Faction, load_faction
-from ..megaglest.parser import LayoutKind, MegaglestPack, discover_pack
+from ..megaglest.parser import LayoutKind, MegaglestPack, discover_pack, find_license_files
 from ..oad.actor_generator import generate_actors
 from ..oad.civ_generator import generate_civ
 from ..oad.mod_builder import (
@@ -77,6 +77,7 @@ def convert_pack(
     metadata = default_metadata(pack.name, settings.target_version, settings.mod_version)
     mod_dir = build_mod_skeleton(output, metadata.name)
     generated = [str(write_mod_json(mod_dir, metadata).relative_to(mod_dir))]
+    generated += _copy_license_files(pack, mod_dir)
     media_stats = [
         convert_faction_media(faction, mod_dir, settings, pack.resources_dir)
         for faction in pack.factions.values()
@@ -142,6 +143,30 @@ def convert_pack(
         },
     )
     return report
+
+
+def _copy_license_files(pack: MegaglestPack, mod_dir: Path) -> list[str]:
+    """Ship the pack's licence and attribution files in ``licenses/``.
+
+    MegaGlest's game data is CC-BY-SA 3.0, which requires a converted mod to
+    carry attribution and the licence terms.
+    """
+    sources = find_license_files(pack)
+    if not sources:
+        LOGGER.warning(
+            "No licence or attribution files found for the pack; the mod ships "
+            "without them. Add them by hand if the pack's licence requires it.",
+            extra={"pack": pack.name},
+        )
+        return []
+    target = mod_dir / "licenses"
+    target.mkdir(exist_ok=True)
+    copied = []
+    for source in sources:
+        destination = target / source.name
+        destination.write_bytes(source.read_bytes())
+        copied.append(str(destination.relative_to(mod_dir)))
+    return copied
 
 
 def _load_factions(pack: MegaglestPack, requested: tuple[str, ...]) -> None:
