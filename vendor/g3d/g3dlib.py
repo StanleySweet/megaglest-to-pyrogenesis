@@ -100,6 +100,8 @@ class G3DModel:
     # PATCH: True when tolerate_truncation recovered a short final mesh.
     truncated: bool = False
     truncated_mesh_names: list[str] = field(default_factory=list)
+    # PATCH: meshes the converter dropped for having no geometry.
+    skipped_mesh_names: list[str] = field(default_factory=list)
 
     @classmethod
     def read(cls, path: str) -> G3DModel:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import math
 import shutil
 from pathlib import Path
@@ -684,3 +685,28 @@ def test_fit_group_frames_aligns_offset_model() -> None:
         for r, t in frames_foreign[f]:
             assert all(math.isfinite(v) for v in r)
             assert all(math.isfinite(v) for v in t)
+
+
+def test_empty_meshes_are_dropped_at_parse(tmp_path: Path) -> None:
+    """A G3D mesh with no geometry never reaches the converters.
+
+    megapack's farm, blacksmith and golem models lead with one; it became a DAE
+    with no triangles, which 0 A.D. rejects and the archive builder leaves out.
+    """
+    model = copy.deepcopy(read_g3d(G3D_FIXTURES / "gold.g3d"))
+    real = model.meshes[0]
+    empty = copy.deepcopy(real)
+    empty.name, empty.vertex_count, empty.index_count = "empty", 0, 0
+    empty.vertices, empty.normals, empty.tex_coords, empty.indices = [], [], [], []
+    # Vertices but under one triangle: what a cut-off final mesh can leave.
+    stub = copy.deepcopy(real)
+    stub.name, stub.index_count, stub.indices = "stub", 2, real.indices[:2]
+    model.meshes[:0] = [empty, stub]
+    path = tmp_path / "with_empty.g3d"
+    model.write(str(path))
+
+    parsed = read_g3d(path)
+    assert [m.name for m in parsed.meshes] == [m.name for m in model.meshes[2:]]
+    assert parsed.skipped_mesh_names == ["empty", "stub"]
+    result = MeshConverter().convert_g3d_to_dae(path, tmp_path / "meshes", "demo")
+    assert result.warnings == ["skipped empty meshes: empty, stub"]

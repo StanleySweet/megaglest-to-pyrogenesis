@@ -139,12 +139,37 @@ def _parse_g3d(path: str, mtime_ns: int, size: int) -> g3dlib.G3DModel:
     version = raw[3]
     if version == 4:
         stream = io.BytesIO(raw)
-        return g3dlib.G3DModel.read_stream(stream, tolerate_truncation=True)
-    if version == 3:
-        return _read_v3(raw, target.stem)
-    raise ConversionError(
-        f"unsupported G3D version {version} in {target} (v3 and v4 only)"
-    )
+        model = g3dlib.G3DModel.read_stream(stream, tolerate_truncation=True)
+    elif version == 3:
+        model = _read_v3(raw, target.stem)
+    else:
+        raise ConversionError(
+            f"unsupported G3D version {version} in {target} (v3 and v4 only)"
+        )
+    return _without_empty_meshes(model)
+
+
+def _without_empty_meshes(model: g3dlib.G3DModel) -> g3dlib.G3DModel:
+    """Drop meshes with no vertices or no triangles.
+
+    Some MegaGlest models carry them (megapack's farm and blacksmith lead with
+    one); a DAE written for one has no geometry, which 0 A.D.'s importer
+    rejects. Every caller sees the same filtered list, so mesh indices stay
+    consistent between the model, its rig and its animations.
+    """
+    # Judge by the data actually read, not the header counts: the tolerant
+    # reader can cut a truncated final mesh to fewer indices than one triangle.
+    has_geometry = [bool(m.vertices) and len(m.indices) >= 3 for m in model.meshes]
+    kept = [m for m, ok in zip(model.meshes, has_geometry, strict=True) if ok]
+    # A model with nothing left is passed through unchanged: callers assume at
+    # least one mesh, and validate --meshes still reports the empty DAE.
+    if not kept or len(kept) == len(model.meshes):
+        return model
+    model.skipped_mesh_names = [
+        m.name for m, ok in zip(model.meshes, has_geometry, strict=True) if not ok
+    ]
+    model.meshes = kept
+    return model
 
 
 def _read_v3(raw: bytes, name: str) -> g3dlib.G3DModel:
@@ -366,6 +391,10 @@ class MeshConverter:
         if model.truncated:
             result.warnings.append(
                 f"truncated model data recovered (meshes: {', '.join(model.truncated_mesh_names)})"
+            )
+        if model.skipped_mesh_names:
+            result.warnings.append(
+                f"skipped empty meshes: {', '.join(model.skipped_mesh_names)}"
             )
         return result
 
