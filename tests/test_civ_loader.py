@@ -134,11 +134,6 @@ def test_upgrade(layout_b_pack: Path) -> None:
     assert weaponry.effects == ["grunt"]
     assert weaponry.stats["armor"] == 5
     assert weaponry.stats["max_hp"]["start_percentage"] == 100
-    # megapack quirk: upgrade XML points ../../../cancel.bmp (one level too
-    # far); the loader falls back to the faction dir's cancel.bmp.
-    assert weaponry.image_cancel is not None
-    assert weaponry.image_cancel.name == "cancel.bmp"
-    assert weaponry.image_cancel.parent.name == "demo"
 
 
 def test_classic_layout_loading(layout_a_pack: Path) -> None:

@@ -149,7 +149,6 @@ def _collect_unit_refs(inventory: AssetInventory, owner_base: str, unit: UnitDef
 def _collect_upgrade_refs(inventory: AssetInventory, owner_base: str, upgrade: UpgradeDef) -> None:
     owner = f"{owner_base}/upgrades/{upgrade.name}"
     _add_ref(inventory, owner, upgrade.image)
-    _add_ref(inventory, owner, upgrade.image_cancel)
 
 
 def _add_particle(inventory: AssetInventory, ref: Path | None) -> None:

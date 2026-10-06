@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -111,3 +112,13 @@ def test_disabled_nodes_are_not_references(tmp_path: Path, flags: dict[str, str]
     else:
         with pytest.raises(AssetReferenceError):
             build_inventory(pack)
+
+
+def test_upgrade_cancel_image_is_not_a_reference(layout_b_pack: Path, tmp_path: Path) -> None:
+    # MegaGlest never loads an upgrade's image-cancel (upgrade_type.cpp), and
+    # megapack's romans point theirs at a file the pack does not ship.
+    pack_root = tmp_path / "pack"
+    shutil.copytree(layout_b_pack, pack_root)
+    (pack_root / "factions/demo/cancel.bmp").unlink()
+    inventory = _inventory_for(pack_root)
+    assert inventory.unresolved == []
