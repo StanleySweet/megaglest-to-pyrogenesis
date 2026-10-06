@@ -141,7 +141,10 @@ def generate_civ(
         "CivBonuses": [],
         "WallSets": ["structures/wallset_palisade"],
         "StartEntities": start_entities,
-        "AINames": [],
+        # Must be non-empty: gamesettings' PlayerName re-picks an AI name until
+        # one sticks, so an empty list hangs launch ("Infinite loop picking
+        # random items"). Duplicates get a " (2)" suffix from the engine.
+        "AINames": [humanize_name(faction.name)],
         "SkirmishReplacements": {},
         "SelectableInGameSetup": True,
     }

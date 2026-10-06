@@ -100,6 +100,7 @@ def test_civ_generator_shape(layout_b_pack: Path, tmp_path: Path) -> None:
         {"Template": "structures/demo/barracks"},
         {"Template": "units/demo/grunt", "Count": 3},
     ]
+    assert payload["AINames"] == ["Demo"]
     assert payload["SelectableInGameSetup"] is True
 
 
