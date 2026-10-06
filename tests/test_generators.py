@@ -130,6 +130,21 @@ def test_civ_generator_writes_player_template(tmp_path: Path) -> None:
     assert emblem.is_file() and emblem.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
 
 
+def test_civ_generator_writes_minimap_background(tmp_path: Path) -> None:
+    from PIL import Image
+
+    faction = Faction(name="demo", starting_units=[], units={})
+    generate_civ(faction, tmp_path, MediaConversionStats(), Settings())
+    # gui/session/minimap/MiniMapPanel.js builds this path from the civ code
+    path = tmp_path / "art/textures/ui/session/icons/bkg/background_circle_demo.png"
+    with Image.open(path) as image:
+        assert image.size == (512, 512)
+        assert image.mode == "RGBA"
+        # a disc like the stock ones: transparent corners, opaque centre
+        assert image.getpixel((0, 0))[3] == 0
+        assert image.getpixel((256, 256))[3] == 255
+
+
 # ---------------------------------------------------------------------------
 # Actors
 # ---------------------------------------------------------------------------

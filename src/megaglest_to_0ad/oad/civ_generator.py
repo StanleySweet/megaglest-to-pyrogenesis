@@ -11,6 +11,7 @@ import json
 import logging
 import struct
 import zlib
+from collections.abc import Callable
 from pathlib import Path
 
 from lxml import etree
@@ -39,34 +40,75 @@ def _write_emblem(civ: str, mod_dir: Path) -> Path:
     hue derived from the civ code, on a lighter ground. Stdlib only.
     """
     size = 128
-    hue = sum(ord(ch) for ch in civ) % 360
+    hue = _civ_hue(civ)
     bg = _hsl_to_rgb(hue, 0.35, 0.30)
     disc = _hsl_to_rgb(hue, 0.55, 0.62)
     radius = size * 0.31
+
+    def pixel(dx: float, dy: float) -> bytes:
+        return disc if dx * dx + dy * dy <= radius * radius else bg
+
+    path = mod_dir / "art/textures/ui/session/portraits/emblems" / f"emblem_{civ}.png"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(_png_rgba(size, pixel))
+    return path
+
+
+def _write_minimap_background(civ: str, mod_dir: Path) -> Path:
+    """Write the session minimap background (``icons/bkg/``).
+
+    ``gui/session/minimap/MiniMapPanel.js`` draws
+    ``session/icons/bkg/background_circle_{civ}.png`` behind the minimap, and
+    the pack has no art for it. The stock ones are a dark 512x512 disc with
+    transparent corners; this one is the same, with a ring in the civ's
+    emblem hue.
+    """
+    size = 512
+    hue = _civ_hue(civ)
+    ground = _hsl_to_rgb(hue, 0.12, 0.14)
+    ring = _hsl_to_rgb(hue, 0.30, 0.24)
+    clear = b"\x00\x00\x00\x00"
+    outer = size / 2
+    ring_out, ring_in = outer * 0.94, outer * 0.88
+
+    def pixel(dx: float, dy: float) -> bytes:
+        dist2 = dx * dx + dy * dy
+        if dist2 > outer * outer:
+            return clear
+        if ring_in * ring_in <= dist2 <= ring_out * ring_out:
+            return ring
+        return ground
+
+    path = mod_dir / "art/textures/ui/session/icons/bkg" / f"background_circle_{civ}.png"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(_png_rgba(size, pixel))
+    return path
+
+
+def _png_rgba(size: int, pixel: Callable[[float, float], bytes]) -> bytes:
+    """Encode a square 8-bit RGBA PNG; ``pixel`` gets the offset from centre."""
     rows = bytearray()
     for y in range(size):
         rows.append(0)  # filter: None
         for x in range(size):
-            dx, dy = x + 0.5 - size / 2, y + 0.5 - size / 2
-            color = disc if dx * dx + dy * dy <= radius * radius else bg
-            rows.extend(color)
-    raw = bytes(rows)
+            rows.extend(pixel(x + 0.5 - size / 2, y + 0.5 - size / 2))
 
     def chunk(tag: bytes, data: bytes) -> bytes:
         body = tag + data
         return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
 
     ihdr = struct.pack(">IIBBBBB", size, size, 8, 6, 0, 0, 0)  # 8-bit RGBA
-    png = (
+    return (
         b"\x89PNG\r\n\x1a\n"
         + chunk(b"IHDR", ihdr)
-        + chunk(b"IDAT", zlib.compress(raw, 9))
+        + chunk(b"IDAT", zlib.compress(bytes(rows), 9))
         + chunk(b"IEND", b"")
     )
-    path = mod_dir / "art/textures/ui/session/portraits/emblems" / f"emblem_{civ}.png"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(png)
-    return path
+
+
+def _civ_hue(civ: str) -> int:
+    """Deterministic hue for a civ code, shared by its emblem and minimap art."""
+    return sum(ord(ch) for ch in civ) % 360
 
 
 def _hsl_to_rgb(hue: float, sat: float, light: float) -> bytes:
@@ -167,6 +209,7 @@ def _write_player_template(faction: Faction, mod_dir: Path, civ: str) -> Path:
     etree.SubElement(identity, "Icon").text = f"emblems/emblem_{civ}.png"
     etree.SubElement(identity, "Undeletable").text = "false"
     _write_emblem(civ, mod_dir)
+    _write_minimap_background(civ, mod_dir)
     path = mod_dir / "simulation/templates/special/players" / f"{civ}.xml"
     path.parent.mkdir(parents=True, exist_ok=True)
     write_xml(path, root)
