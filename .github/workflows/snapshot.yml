@@ -1,0 +1,101 @@
+name: Snapshot
+
+# Converts MegaGlest's megapack with the current converter and builds a
+# .pyromod. Pull requests that change the converter get it as a workflow
+# artifact; pushes to main also replace the asset on the "snapshot" prerelease.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'pyproject.toml'
+      - '.github/workflows/snapshot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned so a snapshot changes only when the converter does. docs/ carries
+  # the CC-BY-SA licence and AUTHORS file the converter ships with the mod.
+  MEGAGLEST_DATA_REF: f5ab4c1dedcc4568f784ed5ebbcec96290fd4456
+  MOD_NAME: megapack
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/checkout@v7
+        with:
+          repository: megaglest/megaglest-data
+          ref: ${{ env.MEGAGLEST_DATA_REF }}
+          path: megaglest-data
+          sparse-checkout: |
+            docs
+            techs/megapack
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - run: pip install .
+
+      # The pyromod action writes to output/, so convert into build/.
+      - name: Convert megapack
+        run: megaglest-to-pyrogenesis convert --megaglest-data megaglest-data/techs/megapack --output build
+
+      - uses: 0ad-matters/gh-action-build-pyromod@v2
+        with:
+          name: ${{ env.MOD_NAME }}
+          version: snapshot
+          directory: build/${{ env.MOD_NAME }}
+
+      - run: |
+          cd output
+          sha256sum "$MOD_NAME-snapshot.pyromod" > "$MOD_NAME-snapshot.pyromod.sha256sum"
+          ls -l
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.MOD_NAME }}-pyromod
+          path: output/*
+
+  publish:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ env.MOD_NAME }}-pyromod
+          path: assets
+
+      - name: Publish rolling "snapshot" prerelease
+        run: |
+          printf '%s\n' \
+            "MegaGlest megapack converted by the latest main commit (${GITHUB_SHA:0:7}), from megaglest-data ${MEGAGLEST_DATA_REF:0:7}." \
+            "" \
+            "Not a stable release. Open issues list the known conversion defects." \
+            "The game data is CC-BY-SA 3.0; the licence and AUTHORS file are in the mod's licenses/ folder." \
+            > "$RUNNER_TEMP/notes.md"
+          if gh release view snapshot >/dev/null 2>&1; then
+            gh release edit snapshot --prerelease --title snapshot --notes-file "$RUNNER_TEMP/notes.md"
+            gh release upload snapshot assets/* --clobber
+          else
+            gh release create snapshot assets/* --prerelease --target "$GITHUB_SHA" --title snapshot --notes-file "$RUNNER_TEMP/notes.md"
+          fi
