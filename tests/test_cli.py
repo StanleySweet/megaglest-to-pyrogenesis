@@ -295,6 +295,18 @@ def test_convert_no_skip_media_overrides_the_environment(
     assert settings.skip_media is False
 
 
+def test_convert_civ_names_from_environment_unless_given(
+    layout_b_pack: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MG2OAD_CIV_NAMES", "demo=Env Folk")
+    settings = _convert_settings(monkeypatch, tmp_path, layout_b_pack)
+    assert settings.civ_names == (("demo", "Env Folk"),)
+    settings = _convert_settings(
+        monkeypatch, tmp_path, layout_b_pack, "--civ-name", "demo=Flag Folk"
+    )
+    assert settings.civ_names == (("demo", "Flag Folk"),)
+
+
 @pytest.mark.parametrize(
     ("value", "message"),
     [("abc", "MG2OAD_RIG_BONES"), ("500", "rig_bones must be 2-64")],
@@ -313,3 +325,64 @@ def test_convert_rejects_a_bad_environment_value(
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit), "must be a clean click error"
     assert message in result.output
+
+
+def test_convert_civ_name_overrides_display_name(layout_b_pack: Path, tmp_path: Path) -> None:
+    result = CliRunner().invoke(
+        cli,
+        [
+            "convert",
+            "--megaglest-data",
+            str(layout_b_pack),
+            "--output",
+            str(tmp_path),
+            "--skip-media",
+            "--civ-name",
+            "demo=Demo Folk",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    mod_dir = tmp_path / "layout_b"
+    player = (mod_dir / "simulation/templates/special/players/demo.xml").read_text(encoding="utf-8")
+    assert "<GenericName>Demo Folk</GenericName>" in player
+    civ = json.loads((mod_dir / "simulation/data/civs/demo.json").read_text(encoding="utf-8"))
+    assert civ["Code"] == "demo"
+    assert civ["AINames"] == ["Demo Folk"]
+
+
+def test_convert_civ_name_needs_code_and_name(layout_b_pack: Path, tmp_path: Path) -> None:
+    result = CliRunner().invoke(
+        cli,
+        [
+            "convert",
+            "--megaglest-data",
+            str(layout_b_pack),
+            "--output",
+            str(tmp_path),
+            "--civ-name",
+            "Demo Folk",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "CODE=NAME" in result.output
+
+
+def test_convert_warns_about_unknown_civ_name(
+    layout_b_pack: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.WARNING):
+        result = CliRunner().invoke(
+            cli,
+            [
+                "convert",
+                "--megaglest-data",
+                str(layout_b_pack),
+                "--output",
+                str(tmp_path),
+                "--skip-media",
+                "--civ-name",
+                "demmo=Demo Folk",
+            ],
+        )
+    assert result.exit_code == 0, result.output
+    assert any("demmo" in r.getMessage() for r in caplog.records)

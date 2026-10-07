@@ -144,8 +144,8 @@ def generate_civ(
     entity and aborts the match with "Failed to load entity template
     'special/players/{civ}'" when it is missing — no units, no animation.
     """
-    del settings  # civ schema is version-stable
     civ = sanitize_mod_name(faction.name)
+    display_name = dict(settings.civ_names).get(civ, humanize_name(faction.name))
 
     dropped = unmapped_resources(faction.starting_resources, grace_is_mapped=False)
     if dropped:
@@ -186,17 +186,17 @@ def generate_civ(
         # Must be non-empty: gamesettings' PlayerName re-picks an AI name until
         # one sticks, so an empty list hangs launch ("Infinite loop picking
         # random items"). Duplicates get a " (2)" suffix from the engine.
-        "AINames": [humanize_name(faction.name)],
+        "AINames": [display_name],
         "SkirmishReplacements": {},
         "SelectableInGameSetup": True,
     }
     path = mod_dir / "simulation/data/civs" / f"{civ}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=4, ensure_ascii=False) + "\n", encoding="utf-8")
-    return path, _write_player_template(faction, mod_dir, civ)
+    return path, _write_player_template(display_name, mod_dir, civ)
 
 
-def _write_player_template(faction: Faction, mod_dir: Path, civ: str) -> Path:
+def _write_player_template(display_name: str, mod_dir: Path, civ: str) -> Path:
     """``special/players/{civ}.xml``: parent ``template_player`` (public mod).
 
     Mirrors the public per-civ player templates. The 0.28+ Identity schema
@@ -208,7 +208,7 @@ def _write_player_template(faction: Faction, mod_dir: Path, civ: str) -> Path:
     root.set("parent", "template_player")
     identity = etree.SubElement(root, "Identity")
     etree.SubElement(identity, "Civ").text = civ
-    etree.SubElement(identity, "GenericName").text = humanize_name(faction.name)
+    etree.SubElement(identity, "GenericName").text = display_name
     etree.SubElement(identity, "Icon").text = f"emblems/emblem_{civ}.png"
     etree.SubElement(identity, "Undeletable").text = "false"
     _write_emblem(civ, mod_dir)

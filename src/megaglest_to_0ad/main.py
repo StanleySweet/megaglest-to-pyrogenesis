@@ -10,7 +10,7 @@ from pathlib import Path
 
 import click
 
-from .core.config import RIG_BONES_MAX, RIG_BONES_MIN, Settings
+from .core.config import RIG_BONES_MAX, RIG_BONES_MIN, Settings, parse_civ_name
 from .core.converter import convert_pack
 from .core.errors import ConversionError
 from .megaglest.parser import discover_pack
@@ -101,6 +101,15 @@ def list_factions(megaglest_data: Path, log_level: str) -> None:
         click.echo(f"  {name}")
 
 
+def _parse_civ_names(
+    _ctx: click.Context, _param: click.Parameter, values: tuple[str, ...]
+) -> tuple[tuple[str, str], ...]:
+    try:
+        return tuple(parse_civ_name(value) for value in values)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc)) from exc
+
+
 @cli.command()
 @click.option(
     "--megaglest-data",
@@ -135,6 +144,14 @@ def list_factions(megaglest_data: Path, log_level: str) -> None:
     f"(default: {Settings.rig_bones}).",
 )
 @click.option(
+    "--civ-name",
+    "civ_names",
+    multiple=True,
+    metavar="CODE=NAME",
+    callback=_parse_civ_names,
+    help='Display name for a converted civ, e.g. indian="Native Americans". Repeatable.',
+)
+@click.option(
     "--log-level",
     type=click.Choice(LOG_LEVELS, case_sensitive=False),
     default="INFO",
@@ -146,12 +163,13 @@ def convert(
     factions: tuple[str, ...],
     skip_media: bool | None,
     rig_bones: int | None,
+    civ_names: tuple[tuple[str, str], ...],
     log_level: str,
 ) -> None:
     """Convert a MegaGlest pack into a 0 A.D. mod."""
     configure_logging(log_level)
     # Flags default to None so only the ones given override MG2OAD_* settings.
-    flags = {"skip_media": skip_media, "rig_bones": rig_bones}
+    flags = {"skip_media": skip_media, "rig_bones": rig_bones, "civ_names": civ_names or None}
     try:
         env_settings = Settings.from_env()
     except ValueError as exc:

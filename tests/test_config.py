@@ -95,3 +95,15 @@ def test_bad_int_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_settings_rejects_rig_bones_out_of_range(bones: int) -> None:
     with pytest.raises(ValueError, match="rig_bones"):
         Settings(rig_bones=bones)
+
+
+def test_civ_names_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(_PREFIX + "CIV_NAMES", "indian=Native Americans; tech = Technicians")
+    settings = Settings.from_env()
+    assert settings.civ_names == (("indian", "Native Americans"), ("tech", "Technicians"))
+
+
+def test_civ_name_without_equals_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(_PREFIX + "CIV_NAMES", "indian")
+    with pytest.raises(ValueError, match="CODE=NAME"):
+        Settings.from_env()
