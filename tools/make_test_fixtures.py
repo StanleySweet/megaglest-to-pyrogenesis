@@ -10,9 +10,9 @@ Output is byte-deterministic, which is what lets
 tests/test_fixture_assets.py regenerate into a temp dir and byte-compare with
 the committed files.
 
-The G3D writer reuses vendor/g3d/g3dlib.py, which reads and writes v4. The v3
-layout has no writer in the tree, so it is packed here against the reader in
-src/megaglest_to_0ad/converters/mesh_converter.py.
+The G3D writer reuses src/megaglest_to_0ad/_vendor/g3dlib.py, which reads and
+writes v4. The v3 layout has no writer in the tree, so it is packed here against
+the reader in src/megaglest_to_0ad/converters/mesh_converter.py.
 """
 
 from __future__ import annotations
@@ -29,9 +29,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures"
-sys.path.insert(0, str(ROOT / "vendor" / "g3d"))
+sys.path.insert(0, str(ROOT / "src"))
 
-import g3dlib  # noqa: E402
+from megaglest_to_0ad._vendor import g3dlib  # noqa: E402
 
 Shape = tuple[list[float], list[float], list[float], list[int]]
 

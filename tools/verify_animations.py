@@ -51,11 +51,10 @@ import json
 import sys
 from pathlib import Path
 
-# Repo-local bootstrap so the tool runs from any CWD (see rig.py).
+# Repo-local bootstrap so the tool runs from any CWD.
 _ROOT = Path(__file__).resolve().parents[1]
-for _p in (_ROOT / "src", _ROOT / "vendor" / "g3d"):
-    if str(_p) not in sys.path:
-        sys.path.insert(0, str(_p))
+if str(_ROOT / "src") not in sys.path:
+    sys.path.insert(0, str(_ROOT / "src"))
 
 import numpy as np  # noqa: E402  (third-party; pycollada dependency)
 from collada import Collada  # noqa: E402

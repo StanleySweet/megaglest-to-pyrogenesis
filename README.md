@@ -125,10 +125,10 @@ The unarchived folder loads in 0 A.D. on its own. Build the archive for distribu
 │   ├── core/            # orchestration, config, logging, media dispatch
 │   ├── megaglest/       # pack discovery, parsing, civ loading, asset inventory
 │   ├── oad/             # 0 A.D. XML and JSON generation, mesh validation
-│   └── utils/
+│   ├── utils/
+│   └── _vendor/         # G3D reader and format notes, GPLv3, from MegaGlest
 ├── tests/               # test suite and fixtures
 ├── tools/               # inspection and migration scripts, see below
-├── vendor/g3d/          # G3D reader and format notes, GPLv3, from MegaGlest
 ├── pyproject.toml
 └── README.md
 ```
@@ -161,7 +161,7 @@ None of these are throwaway; each covers something the CLI does not.
 
 Copyright (C) 2026 Stanislas Daniel Claude Dolcini.
 
-GPLv3. The license text sits in `LICENSE`, and `vendor/g3d/` keeps its own copy alongside the G3D reader and format notes taken from MegaGlest.
+GPLv3. The license text sits in `LICENSE`, and `src/megaglest_to_0ad/_vendor/` keeps its own copy alongside the G3D reader and format notes taken from MegaGlest.
 
 MegaGlest packs and 0 A.D. content ship under their own licenses. This repository grants no rights to them. Confirm the license of a pack before redistributing a converted mod.
 

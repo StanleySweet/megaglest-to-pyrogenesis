@@ -53,11 +53,11 @@ Build a Python 3.11+ CLI tool that converts MegaGlest mega pack data into 0 A.D.
 │   │   ├── texture_converter.py    # TGA/BMP/JPG → PNG
 │   │   ├── audio_converter.py      # WAV → OGG (ffmpeg via subprocess)
 │   │   └── rig.py                  # Morph → skeletal rig synthesis (k-means + Kabsch SVD)
-│   └── utils/
-├── vendor/g3d/
-│   ├── g3d_format.md               # G3D binary format notes (from MegaGlest source)
-│   ├── g3dlib.py                   # Reference G3D v4 reader/writer
-│   └── LICENSE                     # GPLv3 (format spec derived from MegaGlest)
+│   ├── utils/
+│   └── _vendor/
+│       ├── g3d_format.md           # G3D binary format notes (from MegaGlest source)
+│       ├── g3dlib.py               # Reference G3D v4 reader/writer
+│       └── LICENSE                 # GPLv3 (format spec derived from MegaGlest)
 ├── tests/
 │   ├── test_converters.py
 │   ├── test_generators.py
@@ -103,7 +103,7 @@ is needed for 3D.
 - **Blender**: optional, for manual mesh repair only. NOT part of the conversion pipeline (see Mesh Conversion below).
 
 ### Vendored Material (kept in-repo, no fetching)
-- **G3D format spec**: `vendor/g3d/g3d_format.md`, derived from the G3D reader in the MegaGlest source (`source/shared_lib/sources/graphics/model.cpp`, GPLv3 — license retained in `vendor/g3d/LICENSE`). MegaGlest `.g3d` is a bespoke binary format, unrelated to the libgdx "g3dj/g3db" formats.
+- **G3D format spec**: `src/megaglest_to_0ad/_vendor/g3d_format.md`, derived from the G3D reader in the MegaGlest source (`source/shared_lib/sources/graphics/model.cpp`, GPLv3 — license retained in `src/megaglest_to_0ad/_vendor/LICENSE`). MegaGlest `.g3d` is a bespoke binary format, unrelated to the libgdx "g3dj/g3db" formats.
 - **0 A.D. written references**: the relevant 0 A.D. wiki knowledge (mod structure, mod.json rules, install & launch, archive builder, acceptance checklist, file naming conventions, licensing) is written into this plan itself — no external docs required.
 - **Local reference mod**: optional one-time copy of a standalone 0 A.D. mod (e.g. Millennium A.D.) used as an example of hand-authored civ/template/actor files. Never fetched at runtime.
 
@@ -390,7 +390,7 @@ Structure verified against 0 A.D. 0.29 (`art/actors/units/athenians/infantry_spe
 
 ### 1. Mesh Conversion (MegaGlest G3D → DAE)
 
-**Tool**: in-repo, pure-Python. Parse the G3D binary format using the vendored spec (`vendor/g3d/g3d_format.md`, derived from the MegaGlest source reader), then write COLLADA 1.4.1 with a small dedicated writer (no trimesh; `pycollada` is a dev-only cross-check).
+**Tool**: in-repo, pure-Python. Parse the G3D binary format using the vendored spec (`src/megaglest_to_0ad/_vendor/g3d_format.md`, derived from the MegaGlest source reader), then write COLLADA 1.4.1 with a small dedicated writer (no trimesh; `pycollada` is a dev-only cross-check).
 
 Important: MegaGlest `.g3d` is NOT the libgdx `g3dj`/`g3db` format, and existing "G3D exporters" for libgdx do not read it. Do not integrate them.
 
@@ -481,7 +481,7 @@ class MeshConverter:
     def convert_g3d_to_dae(self, g3d_path: Path, output_dir: Path,
                            civ: str, stem: str | None = None) -> ConvertedMesh:
         """Convert G3D to one static base-pose COLLADA DAE per mesh."""
-        # 1. Parse G3D per vendor/g3d/g3d_format.md
+        # 1. Parse G3D per src/megaglest_to_0ad/_vendor/g3d_format.md
         # 2. Build COLLADA geometry (frame 0) — no armature, no animations
 ```
 
@@ -819,7 +819,7 @@ All reference material is local. Nothing here is fetched at build or run time.
 1. **Written 0 A.D. reference material** — the wiki content on mod structure, installation, mod.json rules, archive building, the acceptance checklist, and file naming conventions is integrated directly into this plan (see "Output: 0 A.D. Mod Structure", "Installing & Launching", "File Naming Conventions", "Key Output Formats", "Error Handling & Validation"). No external wiki access is needed.
 2. **0 A.D. `public` mod** — the ground truth for schemas. Path: inside the local 0 A.D. install (`binaries/data/mods/public/`). The converter's `validate` command reads civ/tech/template/actor examples from here. If no 0 A.D. install exists, copy the `public` data folder once next to the tool (`vendor/oad_public/`) and point config at it.
 3. **Reference mod** (optional, one-time local clone) — Millennium A.D. is a good example of a standalone, hand-authored mod with its own civs, templates, actors, and audio; its file organization mirrors the public mod. Any locally available mod works; the point is to see how a mod *other than public* lays out its files.
-4. **G3D format** — `vendor/g3d/g3d_format.md`, derived from the MegaGlest source reader (`source/shared_lib/sources/graphics/model.cpp`; GPLv3). The MegaGlest tree also contains useful reference tools: `source/g3d_viewer/` and `source/tools/glexemel/g2xml.c` (G3D→XML). Vendored copies live in-repo; no downloads.
+4. **G3D format** — `src/megaglest_to_0ad/_vendor/g3d_format.md`, derived from the MegaGlest source reader (`source/shared_lib/sources/graphics/model.cpp`; GPLv3). The MegaGlest tree also contains useful reference tools: `source/g3d_viewer/` and `source/tools/glexemel/g2xml.c` (G3D→XML). Vendored copies live in-repo; no downloads.
 5. **MegaGlest pack layouts** — documented in this plan (Layouts A and B). The parser auto-detects; extend from real packs the user supplies.
 6. **COLLADA** — the DAE writer targets the widely supported 1.4.1 subset that 0 A.D. ships/reads (see DAE examples under `public/art/meshes/`); no external tooling required.
 7. **Licensing of 0 A.D. content** — art is CC-BY-SA-3.0, code GPLv2. Do not copy 0 A.D. assets into converted mods; the mod's own content comes from the MegaGlest pack — check its license and include it in the output mod.

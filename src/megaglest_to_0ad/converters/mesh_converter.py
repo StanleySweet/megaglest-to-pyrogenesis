@@ -1,7 +1,7 @@
 """G3D → COLLADA 1.4.1 mesh + animation conversion.
 
 Parses MegaGlest `.g3d` models (v3 and v4) with the vendored importer
-(`vendor/g3d/g3dlib.py`, format spec in `vendor/g3d/g3d_format.md`) and
+(`_vendor/g3dlib.py`, format spec in `_vendor/g3d_format.md`) and
 writes COLLADA 1.4.1 files consumable by 0 A.D.
 
 Two output families:
@@ -31,7 +31,6 @@ import math
 import os
 import re
 import struct
-import sys
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -40,20 +39,9 @@ from pathlib import Path
 
 from lxml import etree
 
+from .._vendor import g3dlib
 from ..core.errors import ConversionError
-
-# ---------------------------------------------------------------------------
-# vendored importer bootstrap (must run before any module that imports
-# g3dlib — including rig.py — is imported)
-# ---------------------------------------------------------------------------
-
-_VENDOR_G3D_DIR = Path(__file__).resolve().parents[3] / "vendor" / "g3d"
-if str(_VENDOR_G3D_DIR) not in sys.path:
-    sys.path.insert(0, str(_VENDOR_G3D_DIR))
-
-import g3dlib  # noqa: E402  (vendored third-party module; see vendor/g3d/)
-
-from .rig import Rig, animation_duration, fit_group_frames  # noqa: E402
+from .rig import Rig, animation_duration, fit_group_frames
 
 LOGGER = logging.getLogger(__name__)
 
@@ -113,7 +101,7 @@ def read_g3d(path: Path) -> g3dlib.G3DModel:
 
     v4 goes through the vendored importer with truncation tolerance (a short
     final mesh is clamped to EOF and flagged, never fatal). v3 is a separate,
-    simpler format (see ``vendor/g3d/g3d_format.md``).
+    simpler format (see ``_vendor/g3d_format.md``).
 
     Cached per ``(path, mtime, size)``, so a rewritten model is never served
     stale. The returned model is shared between callers and must be treated as

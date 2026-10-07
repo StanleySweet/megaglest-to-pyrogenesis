@@ -36,7 +36,7 @@ from ..oad.particle_converter import convert_particles
 from ..oad.skeleton_writer import write_skeletons
 
 if TYPE_CHECKING:
-    import g3dlib  # vendored; importable after sys.path bootstrap (see mesh_converter)
+    from .._vendor import g3dlib
 
 
 _PROP_ALPHA_IS_TRANSPARENCY = 16  # g3dlib.PROP_ALPHA_IS_TRANSPARENCY

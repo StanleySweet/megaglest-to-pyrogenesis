@@ -29,19 +29,12 @@ model took ~36 s; the vectorized kernels run it in well under a second).
 
 from __future__ import annotations
 
-import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from pathlib import Path
 
 import numpy as np
 
-# Vendored importer bootstrap (idempotent; see mesh_converter).
-_VENDOR_G3D_DIR = Path(__file__).resolve().parents[3] / "vendor" / "g3d"
-if str(_VENDOR_G3D_DIR) not in sys.path:
-    sys.path.insert(0, str(_VENDOR_G3D_DIR))
-
-import g3dlib  # noqa: E402  (vendored third-party module; see vendor/g3d/)
+from .._vendor import g3dlib
 
 _MAX_INFLUENCES = 4
 _KMEANS_ITERATIONS = 60

@@ -9,7 +9,7 @@ description = "Convert MegaGlest mega packs into 0 A.D. mods"
 authors = [{ name = "Stanislas Daniel Claude Dolcini" }]
 readme = "README.md"
 license = "GPL-3.0-or-later"
-license-files = ["LICENSE", "vendor/g3d/LICENSE"]
+license-files = ["LICENSE", "src/megaglest_to_0ad/_vendor/LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "click>=8.1.0",
