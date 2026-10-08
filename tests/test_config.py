@@ -89,3 +89,15 @@ def test_bad_int_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(_PREFIX + "RIG_BONES", "many")
     with pytest.raises(ValueError):
         Settings.from_env()
+
+
+def test_civ_names_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(_PREFIX + "CIV_NAMES", "indian=Native Americans; tech = Technicians")
+    settings = Settings.from_env()
+    assert settings.civ_names == (("indian", "Native Americans"), ("tech", "Technicians"))
+
+
+def test_civ_name_without_equals_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(_PREFIX + "CIV_NAMES", "indian")
+    with pytest.raises(ValueError, match="CODE=NAME"):
+        Settings.from_env()

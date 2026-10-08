@@ -30,8 +30,19 @@ def _read_env_file() -> dict[str, str]:
     return values
 
 
+def parse_civ_name(text: str) -> tuple[str, str]:
+    """``CODE=NAME`` -> ``(code, name)``, for a civ display-name override."""
+    code, sep, name = text.partition("=")
+    code, name = code.strip(), name.strip()
+    if not sep or not code or not name:
+        raise ValueError(f"expected CODE=NAME, got {text!r}")
+    return code, name
+
+
 def _coerce(raw: str, kind: Any) -> Any:
     """Convert an environment string to a field's declared type."""
+    if kind == tuple[tuple[str, str], ...]:
+        return tuple(parse_civ_name(item) for item in raw.split(";") if item.strip())
     if kind is bool:
         return raw.strip().lower() in {"1", "true", "yes", "on"}
     if kind is int:
@@ -54,6 +65,10 @@ class Settings:
     mod_version: str = "1.0.0"
     skip_media: bool = False
     rig_bones: int = 32
+    # Display-name overrides keyed by civ code (--civ-name). The code itself,
+    # used in every path, stays the MegaGlest faction name. MG2OAD_CIV_NAMES
+    # separates entries with ";".
+    civ_names: tuple[tuple[str, str], ...] = ()
 
     @classmethod
     def from_env(cls) -> Settings:

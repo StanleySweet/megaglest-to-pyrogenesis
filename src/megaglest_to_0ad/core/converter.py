@@ -20,6 +20,7 @@ from ..oad.mod_builder import (
     ModMetadata,
     build_mod_skeleton,
     default_metadata,
+    sanitize_mod_name,
     write_mod_json,
 )
 from ..oad.tech_generator import generate_techs
@@ -73,6 +74,14 @@ def convert_pack(
     LOGGER.info("Starting conversion", extra={"root": str(megaglest_data)})
     pack = discover_pack(megaglest_data)
     _load_factions(pack, factions)
+    civs = {sanitize_mod_name(faction.name) for faction in pack.factions.values()}
+    for code, _ in settings.civ_names:
+        if code not in civs:
+            LOGGER.warning(
+                "--civ-name %r matches no converted civ; ignored",
+                code,
+                extra={"civs": sorted(civs)},
+            )
     inventory = build_inventory(pack)
     metadata = default_metadata(pack.name, settings.target_version, settings.mod_version)
     mod_dir = build_mod_skeleton(output, metadata.name)

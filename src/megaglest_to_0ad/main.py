@@ -9,7 +9,7 @@ from pathlib import Path
 
 import click
 
-from .core.config import Settings
+from .core.config import Settings, parse_civ_name
 from .core.converter import convert_pack
 from .core.errors import ConversionError
 from .megaglest.parser import discover_pack
@@ -100,6 +100,15 @@ def list_factions(megaglest_data: Path, log_level: str) -> None:
         click.echo(f"  {name}")
 
 
+def _parse_civ_names(
+    _ctx: click.Context, _param: click.Parameter, values: tuple[str, ...]
+) -> tuple[tuple[str, str], ...]:
+    try:
+        return tuple(parse_civ_name(value) for value in values)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc)) from exc
+
+
 @cli.command()
 @click.option(
     "--megaglest-data",
@@ -135,6 +144,14 @@ def list_factions(megaglest_data: Path, log_level: str) -> None:
     help="Maximum joints (incl. root) of the synthesized rig per model.",
 )
 @click.option(
+    "--civ-name",
+    "civ_names",
+    multiple=True,
+    metavar="CODE=NAME",
+    callback=_parse_civ_names,
+    help='Display name for a converted civ, e.g. indian="Native Americans". Repeatable.',
+)
+@click.option(
     "--log-level",
     type=click.Choice(LOG_LEVELS, case_sensitive=False),
     default="INFO",
@@ -146,11 +163,12 @@ def convert(
     factions: tuple[str, ...],
     skip_media: bool,
     rig_bones: int,
+    civ_names: tuple[tuple[str, str], ...],
     log_level: str,
 ) -> None:
     """Convert a MegaGlest pack into a 0 A.D. mod."""
     configure_logging(log_level)
-    settings = Settings(skip_media=skip_media, rig_bones=rig_bones)
+    settings = Settings(skip_media=skip_media, rig_bones=rig_bones, civ_names=civ_names)
     try:
         report = convert_pack(megaglest_data, output, factions, settings)
     except ConversionError as exc:

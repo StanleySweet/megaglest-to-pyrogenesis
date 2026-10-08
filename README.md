@@ -61,6 +61,7 @@ megaglest-to-pyrogenesis convert \
 | `--factions` | `all` | Faction to convert; repeat the flag per faction, or pass `all` |
 | `--skip-media` | off | Skip mesh, texture, and audio conversion, and generate game data only |
 | `--rig-bones` | `32` | Maximum joints, root included, of the synthesized rig per model (2-64) |
+| `--civ-name` | none | Display name for a converted civ, as `CODE=NAME`, for example `indian="Native Americans"`. Repeat per civ. The civ code in file paths does not change |
 | `--log-level` | `INFO` | `DEBUG`, `INFO`, `WARNING`, or `ERROR` |
 
 Generated DAEs are byte-reproducible: the same input always yields the same

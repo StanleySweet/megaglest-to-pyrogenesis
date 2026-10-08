@@ -236,3 +236,64 @@ def test_convert_warns_when_no_licence_found(
     assert result.exit_code == 0, result.output
     assert not (tmp_path / "layout_b" / "licenses").exists()
     assert "No licence or attribution files" in caplog.text
+
+
+def test_convert_civ_name_overrides_display_name(layout_b_pack: Path, tmp_path: Path) -> None:
+    result = CliRunner().invoke(
+        cli,
+        [
+            "convert",
+            "--megaglest-data",
+            str(layout_b_pack),
+            "--output",
+            str(tmp_path),
+            "--skip-media",
+            "--civ-name",
+            "demo=Demo Folk",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    mod_dir = tmp_path / "layout_b"
+    player = (mod_dir / "simulation/templates/special/players/demo.xml").read_text(encoding="utf-8")
+    assert "<GenericName>Demo Folk</GenericName>" in player
+    civ = json.loads((mod_dir / "simulation/data/civs/demo.json").read_text(encoding="utf-8"))
+    assert civ["Code"] == "demo"
+    assert civ["AINames"] == ["Demo Folk"]
+
+
+def test_convert_civ_name_needs_code_and_name(layout_b_pack: Path, tmp_path: Path) -> None:
+    result = CliRunner().invoke(
+        cli,
+        [
+            "convert",
+            "--megaglest-data",
+            str(layout_b_pack),
+            "--output",
+            str(tmp_path),
+            "--civ-name",
+            "Demo Folk",
+        ],
+    )
+    assert result.exit_code != 0
+    assert "CODE=NAME" in result.output
+
+
+def test_convert_warns_about_unknown_civ_name(
+    layout_b_pack: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level(logging.WARNING):
+        result = CliRunner().invoke(
+            cli,
+            [
+                "convert",
+                "--megaglest-data",
+                str(layout_b_pack),
+                "--output",
+                str(tmp_path),
+                "--skip-media",
+                "--civ-name",
+                "demmo=Demo Folk",
+            ],
+        )
+    assert result.exit_code == 0, result.output
+    assert any("demmo" in r.getMessage() for r in caplog.records)
