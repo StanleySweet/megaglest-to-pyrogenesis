@@ -89,3 +89,9 @@ def test_bad_int_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(_PREFIX + "RIG_BONES", "many")
     with pytest.raises(ValueError):
         Settings.from_env()
+
+
+@pytest.mark.parametrize("bones", [1, 65])
+def test_settings_rejects_rig_bones_out_of_range(bones: int) -> None:
+    with pytest.raises(ValueError, match="rig_bones"):
+        Settings(rig_bones=bones)

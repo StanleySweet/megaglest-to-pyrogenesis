@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import sys
@@ -9,7 +10,7 @@ from pathlib import Path
 
 import click
 
-from .core.config import Settings
+from .core.config import RIG_BONES_MAX, RIG_BONES_MIN, Settings
 from .core.converter import convert_pack
 from .core.errors import ConversionError
 from .megaglest.parser import discover_pack
@@ -122,17 +123,16 @@ def list_factions(megaglest_data: Path, log_level: str) -> None:
     help="Faction(s) to convert; repeat the flag or pass 'all'.",
 )
 @click.option(
-    "--skip-media",
-    is_flag=True,
-    default=False,
+    "--skip-media/--no-skip-media",
+    default=None,
     help="Skip mesh/texture/audio conversion (mod skeleton + game data only).",
 )
 @click.option(
     "--rig-bones",
-    type=click.IntRange(min=2, max=64),
-    default=32,
-    show_default=True,
-    help="Maximum joints (incl. root) of the synthesized rig per model.",
+    type=click.IntRange(min=RIG_BONES_MIN, max=RIG_BONES_MAX),
+    default=None,
+    help="Maximum joints (incl. root) of the synthesized rig per model "
+    f"(default: {Settings.rig_bones}).",
 )
 @click.option(
     "--log-level",
@@ -144,13 +144,21 @@ def convert(
     megaglest_data: Path,
     output: Path,
     factions: tuple[str, ...],
-    skip_media: bool,
-    rig_bones: int,
+    skip_media: bool | None,
+    rig_bones: int | None,
     log_level: str,
 ) -> None:
     """Convert a MegaGlest pack into a 0 A.D. mod."""
     configure_logging(log_level)
-    settings = Settings(skip_media=skip_media, rig_bones=rig_bones)
+    # Flags default to None so only the ones given override MG2OAD_* settings.
+    flags = {"skip_media": skip_media, "rig_bones": rig_bones}
+    try:
+        env_settings = Settings.from_env()
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    settings = dataclasses.replace(
+        env_settings, **{key: value for key, value in flags.items() if value is not None}
+    )
     try:
         report = convert_pack(megaglest_data, output, factions, settings)
     except ConversionError as exc:

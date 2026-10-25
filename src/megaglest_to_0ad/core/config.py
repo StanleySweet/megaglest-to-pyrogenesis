@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Any, get_type_hints
 
 _ENV_PREFIX = "MG2OAD_"
+RIG_BONES_MIN = 2
+RIG_BONES_MAX = 64
 
 
 def _read_env_file() -> dict[str, str]:
@@ -55,6 +57,12 @@ class Settings:
     skip_media: bool = False
     rig_bones: int = 32
 
+    def __post_init__(self) -> None:
+        if not RIG_BONES_MIN <= self.rig_bones <= RIG_BONES_MAX:
+            raise ValueError(
+                f"rig_bones must be {RIG_BONES_MIN}-{RIG_BONES_MAX}, got {self.rig_bones}"
+            )
+
     @classmethod
     def from_env(cls) -> Settings:
         """Defaults, overridden by ``.env`` and then the real environment.
@@ -66,7 +74,14 @@ class Settings:
         kinds = get_type_hints(cls)
         values: dict[str, Any] = {}
         for field in fields(cls):
-            raw = found.get(_ENV_PREFIX + field.name.upper())
+            name = _ENV_PREFIX + field.name.upper()
+            raw = found.get(name)
             if raw is not None:
-                values[field.name] = _coerce(raw, kinds[field.name])
-        return cls(**values)
+                try:
+                    values[field.name] = _coerce(raw, kinds[field.name])
+                except ValueError as exc:
+                    raise ValueError(f"{name}: {exc}") from exc
+        try:
+            return cls(**values)
+        except ValueError as exc:
+            raise ValueError(f"MG2OAD_* settings: {exc}") from exc

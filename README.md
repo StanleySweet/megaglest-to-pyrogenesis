@@ -59,7 +59,7 @@ megaglest-to-pyrogenesis convert \
 | `--megaglest-data` | *(required)* | Path to the MegaGlest pack root |
 | `--output` | `output` | Directory that receives the generated mod folder |
 | `--factions` | `all` | Faction to convert; repeat the flag per faction, or pass `all` |
-| `--skip-media` | off | Skip mesh, texture, and audio conversion, and generate game data only |
+| `--skip-media`, `--no-skip-media` | off | Skip mesh, texture, and audio conversion, and generate game data only; `--no-skip-media` overrides `MG2OAD_SKIP_MEDIA` |
 | `--rig-bones` | `32` | Maximum joints, root included, of the synthesized rig per model (2-64) |
 | `--log-level` | `INFO` | `DEBUG`, `INFO`, `WARNING`, or `ERROR` |
 

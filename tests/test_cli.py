@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
 
+from megaglest_to_0ad.core.config import Settings
+from megaglest_to_0ad.core.errors import ConversionError
 from megaglest_to_0ad.main import cli
 
 
@@ -236,3 +239,77 @@ def test_convert_warns_when_no_licence_found(
     assert result.exit_code == 0, result.output
     assert not (tmp_path / "layout_b" / "licenses").exists()
     assert "No licence or attribution files" in caplog.text
+
+
+def _convert_settings(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, pack: Path, *flags: str
+) -> Settings:
+    """Run ``convert`` with convert_pack stubbed; return the Settings it got."""
+    seen = {}
+
+    def fake_convert_pack(megaglest_data, output, factions, settings):
+        seen["settings"] = settings
+        raise ConversionError("stop")
+
+    monkeypatch.setattr("megaglest_to_0ad.main.convert_pack", fake_convert_pack)
+    monkeypatch.chdir(tmp_path)  # no .env to pick up
+    args = ["convert", "--megaglest-data", str(pack), "--output", str(tmp_path), *flags]
+    CliRunner().invoke(cli, args)
+    return seen["settings"]
+
+
+def test_convert_reads_the_environment(
+    layout_b_pack: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MG2OAD_RIG_BONES", "8")
+    monkeypatch.setenv("MG2OAD_SKIP_MEDIA", "true")
+    monkeypatch.setenv("MG2OAD_TARGET_VERSION", "0.29.0")
+    settings = _convert_settings(monkeypatch, tmp_path, layout_b_pack)
+    assert settings.rig_bones == 8
+    assert settings.skip_media is True
+    assert settings.target_version == "0.29.0"
+
+
+def test_convert_flags_override_the_environment(
+    layout_b_pack: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MG2OAD_RIG_BONES", "8")
+    settings = _convert_settings(monkeypatch, tmp_path, layout_b_pack, "--rig-bones", "16")
+    assert settings.rig_bones == 16
+
+
+def test_convert_defaults_without_flags_or_environment(
+    layout_b_pack: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for key in [k for k in os.environ if k.startswith("MG2OAD_")]:
+        monkeypatch.delenv(key)
+    settings = _convert_settings(monkeypatch, tmp_path, layout_b_pack)
+    assert settings == Settings()
+
+
+def test_convert_no_skip_media_overrides_the_environment(
+    layout_b_pack: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MG2OAD_SKIP_MEDIA", "true")
+    settings = _convert_settings(monkeypatch, tmp_path, layout_b_pack, "--no-skip-media")
+    assert settings.skip_media is False
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [("abc", "MG2OAD_RIG_BONES"), ("500", "rig_bones must be 2-64")],
+)
+def test_convert_rejects_a_bad_environment_value(
+    layout_b_pack: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    value: str,
+    message: str,
+) -> None:
+    monkeypatch.setenv("MG2OAD_RIG_BONES", value)
+    monkeypatch.chdir(tmp_path)
+    args = ["convert", "--megaglest-data", str(layout_b_pack), "--output", str(tmp_path)]
+    result = CliRunner().invoke(cli, args)
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit), "must be a clean click error"
+    assert message in result.output
