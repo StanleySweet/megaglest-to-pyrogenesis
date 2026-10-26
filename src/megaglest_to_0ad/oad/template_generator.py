@@ -20,7 +20,6 @@ from ..megaglest.civ_loader import AttackStats, Faction, UnitDef
 from .actor_generator import _unit_models
 from .common import (
     HP_SCALE,
-    SPEED_SCALE,
     TILE_METERS,
     TIME_SCALE,
     grace_amount,
@@ -28,6 +27,7 @@ from .common import (
     resource_cost,
     town_centre_candidate,
     unmapped_resources,
+    walk_speed,
     write_xml,
 )
 from .mod_builder import sanitize_mod_name
@@ -344,17 +344,14 @@ def _add_obstruction(root: etree._Element, unit: UnitDef, stats: MediaConversion
 
 
 def _add_motion(root: etree._Element, unit: UnitDef) -> None:
-    speed = max(
-        (skill.speed for skill in unit.skills.values() if skill.type == "move"),
-        default=0.0,
-    )
+    speed = walk_speed(unit)
     if speed <= 0:
         return
     if unit.is_flying:
-        _add_flying_motion(root, unit, speed / SPEED_SCALE)
+        _add_flying_motion(root, unit, speed)
         return
     motion = etree.SubElement(root, "UnitMotion")
-    etree.SubElement(motion, "WalkSpeed").text = _fmt(speed / SPEED_SCALE)
+    etree.SubElement(motion, "WalkSpeed").text = _fmt(speed)
     etree.SubElement(motion, "FormationController").text = "false"
     etree.SubElement(motion, "InstantTurnAngle").text = "1.0"
     etree.SubElement(motion, "Acceleration").text = "3.0"

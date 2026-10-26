@@ -58,6 +58,15 @@ def add_actor_textures(variant: etree._Element, civ: str, texture: Path) -> None
     etree.SubElement(textures, "texture", file="null_black.dds", name="specTex")
 
 
+def walk_speed(unit: UnitDef) -> float:
+    """0 A.D. WalkSpeed in m/s from the unit's fastest move skill (0 = none)."""
+    speed = max(
+        (skill.speed for skill in unit.skills.values() if skill.type == "move"),
+        default=0.0,
+    )
+    return speed / SPEED_SCALE
+
+
 def humanize_name(raw: str) -> str:
     """``skirmisher`` -> ``Skirmisher`` (template/tech names)."""
     return re.sub(r"[_-]+", " ", raw).strip().title()

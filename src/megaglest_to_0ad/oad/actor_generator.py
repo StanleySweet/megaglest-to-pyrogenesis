@@ -23,7 +23,7 @@ from lxml import etree
 from ..core.config import Settings
 from ..core.media_conversion import MediaConversionStats, engine_animation_names
 from ..megaglest.civ_loader import Faction, UnitDef
-from .common import add_actor_textures, material_for, write_xml
+from .common import add_actor_textures, material_for, walk_speed, write_xml
 from .mod_builder import sanitize_mod_name
 
 LOGGER = logging.getLogger(__name__)
@@ -31,6 +31,21 @@ LOGGER = logging.getLogger(__name__)
 # Actor animation speed is integer percent (ObjectBase.cpp: ToInt()/100);
 # the MegaGlest anim-speed is baked into the DAE keyframe times instead.
 _ANIM_SPEED_PERCENT = "100"
+_MOVEMENT_ANIMS = ("walk", "run")
+
+
+def _anim_speeds(unit: UnitDef) -> dict[str, str]:
+    """Actor ``speed`` per animation name; anything not listed plays at 100.
+
+    UnitMotion plays walk and run at ``m/s x speed / 100``, while MegaGlest
+    plays its move cycle at a fixed rate. ``100 / WalkSpeed`` reproduces that
+    rate at walking pace. Flying motion never passes a speed, so it keeps 100.
+    """
+    speed = walk_speed(unit)
+    if speed <= 0 or unit.is_flying:
+        return {}
+    percent = str(max(1, round(100 / speed)))
+    return dict.fromkeys(_MOVEMENT_ANIMS, percent)
 
 
 def generate_actors(
@@ -104,10 +119,11 @@ def _build_actor(
     root = etree.Element("actor", version="1")
     etree.SubElement(root, "castshadow")
     mesh_daes = stats.models[g3d].mesh_daes
-    props = _add_props(civ, g3d, mesh_daes, stats, settings, mod_dir, written)
+    speeds = _anim_speeds(unit)
+    props = _add_props(civ, g3d, mesh_daes, stats, settings, mod_dir, written, speeds)
     group = etree.SubElement(root, "group")
     variant = etree.SubElement(group, "variant", frequency="1", name="Base")
-    _add_animations(variant, civ, unit, g3d, stats)
+    _add_animations(variant, civ, unit, g3d, stats, speeds)
     mesh = etree.SubElement(variant, "mesh")
     mesh.text = f"{civ}/{mesh_daes[0].name}"
     texture = _dae_texture(mesh_daes[0], g3d, stats)
@@ -181,6 +197,7 @@ def _add_props(
     settings: Settings,
     mod_dir: Path,
     written: list[Path],
+    speeds: dict[str, str],
 ) -> etree._Element | None:
     """Prop actors for every sub-mesh beyond the first, attached at ``root``.
 
@@ -199,16 +216,20 @@ def _add_props(
     props = etree.Element("props")
     for idx, dae in enumerate(extra):
         group_index = idx + 1
-        prop_path = mod_dir / "art/actors/props" / civ / f"{dae.stem}.xml"
+        anims = prop_anims.get(group_index, {})
+        # Units sharing a model can walk at different speeds, so the speed
+        # is part of the shared prop actor's name.
+        moving = [speeds[anim] for anim in _MOVEMENT_ANIMS if anim in anims and anim in speeds]
+        name = f"{dae.stem}_s{moving[0]}" if moving else dae.stem
+        prop_path = mod_dir / "art/actors/props" / civ / f"{name}.xml"
         if prop_path not in written:
             prop_path.parent.mkdir(parents=True, exist_ok=True)
-            anims = prop_anims.get(group_index, {})
             prop_actor = _prop_actor(
-                civ, dae, _dae_texture(dae, g3d, stats), material, anims
+                civ, dae, _dae_texture(dae, g3d, stats), material, anims, speeds
             )
             write_xml(prop_path, prop_actor)
             written.append(prop_path)
-        etree.SubElement(props, "prop", actor=f"props/{civ}/{dae.stem}.xml", attachpoint="root")
+        etree.SubElement(props, "prop", actor=f"props/{civ}/{name}.xml", attachpoint="root")
     return props
 
 
@@ -281,7 +302,8 @@ def _prop_actor(
     dae: Path,
     texture: Path | None,
     material: str,
-    animations: dict[str, Path] | None = None,
+    animations: dict[str, Path],
+    speeds: dict[str, str],
 ) -> etree._Element:
     root = etree.Element("actor", version="1")
     etree.SubElement(root, "castshadow")
@@ -298,7 +320,7 @@ def _prop_actor(
             attrs = {
                 "file": f"{civ}/{path.name}",
                 "name": name,
-                "speed": _ANIM_SPEED_PERCENT,
+                "speed": speeds.get(name, _ANIM_SPEED_PERCENT),
                 # The animation id drives skinned-prop sync: a unit's parts
                 # share the same id per name so PickAnimationID keeps them in
                 # frame (see tools/validate_animations.py).
@@ -325,6 +347,7 @@ def _add_animations(
     unit: UnitDef,
     g3d: Path,
     stats: MediaConversionStats,
+    speeds: dict[str, str],
 ) -> None:
     """Wire the unit's engine animation names to their animation DAEs.
 
@@ -342,7 +365,7 @@ def _add_animations(
         attrs = {
             "file": f"{civ}/{path.name}",
             "name": name,
-            "speed": _ANIM_SPEED_PERCENT,
+            "speed": speeds.get(name, _ANIM_SPEED_PERCENT),
             # id == name keeps every skinned part of this unit synced; the
             # engine selects the shared id via PickAnimationID.
             "id": name,

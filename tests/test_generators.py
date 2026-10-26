@@ -866,6 +866,81 @@ def test_actor_prop_animations_share_ids(tmp_path: Path) -> None:
         assert anim.get("id") == "idle"
 
 
+def _walking_units_stats(tmp_path: Path) -> tuple[MediaConversionStats, Path]:
+    """Stats for a two-mesh model with idle/walk/run on the body and the prop."""
+    g3d = G3D_FIXTURES / "gold.g3d"
+    stats, dae, _png = _stats_with_model(g3d, tmp_path)
+    anim_dir = tmp_path / "art" / "animation" / "demo"
+    anim_dir.mkdir(parents=True)
+    names = ("idle", "walk", "run")
+    for name in names:
+        (anim_dir / f"gold_{name}.dae").write_text("<COLLADA/>")
+        (anim_dir / f"gold_g02_{name}.dae").write_text("<COLLADA/>")
+    stats.animations[g3d] = {n: anim_dir / f"gold_{n}.dae" for n in names}
+    stats.prop_animations[g3d] = {1: {n: anim_dir / f"gold_g02_{n}.dae" for n in names}}
+    prop_dae = tmp_path / "art" / "meshes" / "demo" / "gold_1.dae"
+    prop_dae.parent.mkdir(parents=True, exist_ok=True)
+    prop_dae.write_text("<COLLADA/>")
+    stats.models[g3d] = ConvertedMesh(g3d_path=g3d, mesh_daes=[dae.parent / "gold.dae", prop_dae])
+    return stats, g3d
+
+
+def _walker(g3d: Path, name: str, speed: float) -> UnitDef:
+    return _unit(
+        name,
+        skills={
+            "stop": SkillDef(type="stop", name="s", animation=g3d),
+            "move": SkillDef(type="move", name="m", animation=g3d, speed=speed),
+        },
+    )
+
+
+def _actor_and_prop_animations(tmp_path: Path, unit: str) -> tuple[list, list]:
+    root = etree.parse(tmp_path / f"art/actors/units/demo/{unit}.xml").getroot()
+    prop = root.xpath("//variant/props/prop")[0].get("actor")
+    prop_root = etree.parse(tmp_path / "art" / "actors" / prop).getroot()
+    return (
+        root.xpath("//variant/animations/animation"),
+        prop_root.xpath("//variant/animations/animation"),
+    )
+
+
+def _walking_unit_actors(tmp_path: Path, *, flying: bool = False) -> tuple[list, list]:
+    """Root and prop animations of a unit with a 210-speed move skill."""
+    stats, g3d = _walking_units_stats(tmp_path)
+    walker = _walker(g3d, "walker", 210.0)
+    walker.is_flying = flying
+    generate_actors(_faction_with(tmp_path, {"walker": walker}), tmp_path, stats, Settings())
+    return _actor_and_prop_animations(tmp_path, "walker")
+
+
+def test_actor_movement_animations_play_at_megaglest_rate(tmp_path: Path) -> None:
+    """WalkSpeed 7 (210 / 30): speed 14 plays the walk cycle at rate 1."""
+    for animations in _walking_unit_actors(tmp_path):
+        assert {a.get("name"): a.get("speed") for a in animations} == {
+            "idle": "100",
+            "run": "14",
+            "walk": "14",
+        }
+
+
+def test_actor_flying_movement_animations_keep_full_speed(tmp_path: Path) -> None:
+    for animations in _walking_unit_actors(tmp_path, flying=True):
+        assert {a.get("speed") for a in animations} == {"100"}
+
+
+def test_actor_shared_props_follow_each_units_walk_speed(tmp_path: Path) -> None:
+    """Two units on one model at WalkSpeed 3 and 7 get separate prop actors."""
+    stats, g3d = _walking_units_stats(tmp_path)
+    units = {"slow": _walker(g3d, "slow", 90.0), "fast": _walker(g3d, "fast", 210.0)}
+    generate_actors(_faction_with(tmp_path, units), tmp_path, stats, Settings())
+    for unit, percent in (("slow", "33"), ("fast", "14")):
+        body, prop = _actor_and_prop_animations(tmp_path, unit)
+        for animations in (body, prop):
+            walk = [a.get("speed") for a in animations if a.get("name") == "walk"]
+            assert walk == [percent], unit
+
+
 def test_actor_omits_animations_for_static_units(tmp_path: Path) -> None:
     g3d = G3D_FIXTURES / "gold.g3d"
     stats, _dae, _png = _stats_with_model(g3d, tmp_path)
