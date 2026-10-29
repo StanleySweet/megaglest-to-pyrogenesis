@@ -315,11 +315,20 @@ def convert_particles(
 
     converter = TextureConverter()
     particle_xml: dict[Path, MGParticle] = {}
-    for ref in _referenced_particles(faction):
+    # Sorted: set order varies per run, and it decides which same-stem system
+    # gets the bare name in _unique_name.
+    for ref in sorted(_referenced_particles(faction)):
         if ref in particle_xml:
             continue
         try:
-            particle_xml[ref] = parse_particle(ref)
+            particle = parse_particle(ref)
+            # Emitters sit on the model, so they scale with --model-scale.
+            scale = settings.model_scale
+            particle.offset = tuple(v * scale for v in particle.offset)
+            particle.size *= scale
+            particle.speed *= scale
+            particle.gravity *= scale
+            particle_xml[ref] = particle
         except ConversionError as exc:
             stats.warnings.append(f"particle {ref.name}: {exc}")
 

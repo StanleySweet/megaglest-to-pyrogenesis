@@ -690,6 +690,17 @@ def test_template_footprint_from_model_bbox(tmp_path: Path) -> None:
     assert static.get("width") == "3.5" and static.get("depth") == "2.2"
 
 
+def test_template_fallback_footprint_follows_model_scale(tmp_path: Path) -> None:
+    """With no measured model, the size-based guess scales like a measured box."""
+    hall = _unit("hall", is_building=True, parameters={"size": 4, "height": 6.0})
+    faction = _faction_with(tmp_path, {"hall": hall})
+    generate_templates(faction, tmp_path, MediaConversionStats(), Settings(model_scale=1.5))
+    root = etree.parse(tmp_path / "simulation/templates/structures/demo/hall.xml").getroot()
+    assert root.find("Footprint/Square").get("width") == "24.0"  # 4 cells x 4 m x 1.5
+    assert root.find("Footprint/Height").text == "9.0"
+    assert root.find("Obstruction/Static").get("width") == "24.0"
+
+
 def test_template_static_obstruction_meets_engine_minimum(tmp_path: Path) -> None:
     """A prop smaller than 1.5 m still gets a Static obstruction 0.28 accepts.
 

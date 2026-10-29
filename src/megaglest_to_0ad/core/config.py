@@ -49,6 +49,8 @@ def _coerce(raw: str, kind: Any) -> Any:
         return raw.strip().lower() in {"1", "true", "yes", "on"}
     if kind is int:
         return int(raw)
+    if kind is float:
+        return float(raw)
     return raw
 
 
@@ -71,12 +73,18 @@ class Settings:
     # used in every path, stays the MegaGlest faction name. MG2OAD_CIV_NAMES
     # separates entries with ";".
     civ_names: tuple[tuple[str, str], ...] = ()
+    # Multiplies every model's vertices, and with them footprints and
+    # particles. 1.0 keeps MegaGlest's own sizes; about 1.8 makes units
+    # stock-sized, leaving buildings at about half stock size.
+    model_scale: float = 1.0
 
     def __post_init__(self) -> None:
         if not RIG_BONES_MIN <= self.rig_bones <= RIG_BONES_MAX:
             raise ValueError(
                 f"rig_bones must be {RIG_BONES_MIN}-{RIG_BONES_MAX}, got {self.rig_bones}"
             )
+        if self.model_scale <= 0:
+            raise ValueError(f"model_scale must be positive, got {self.model_scale}")
 
     @classmethod
     def from_env(cls) -> Settings:

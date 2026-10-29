@@ -710,3 +710,20 @@ def test_empty_meshes_are_dropped_at_parse(tmp_path: Path) -> None:
     assert parsed.skipped_mesh_names == ["empty", "stub"]
     result = MeshConverter().convert_g3d_to_dae(path, tmp_path / "meshes", "demo")
     assert result.warnings == ["skipped empty meshes: empty, stub"]
+
+
+def test_media_conversion_writes_animations(layout_b_pack: Path, tmp_path: Path) -> None:
+    """A unit with real animated models gets rigged and animated, scale included."""
+    pack_dir = tmp_path / "pack"
+    shutil.copytree(layout_b_pack, pack_dir)
+    models = pack_dir / "factions/demo/units/grunt/models"
+    for name in ("grunt_stand.g3d", "grunt_walk.g3d"):
+        shutil.copy(G3D_FIXTURES / "treant_idle.g3d", models / name)
+    pack = discover_pack(pack_dir)
+    faction = load_faction(pack, pack.factions_dir / "demo")
+    stats = convert_faction_media(
+        faction, tmp_path / "mod", Settings(model_scale=2.0), pack.resources_dir
+    )
+    animations = [dae for by_name in stats.animations.values() for dae in by_name.values()]
+    assert animations
+    assert all(dae.is_file() for dae in animations)

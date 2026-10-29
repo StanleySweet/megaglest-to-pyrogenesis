@@ -107,3 +107,14 @@ def test_civ_name_without_equals_is_reported(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv(_PREFIX + "CIV_NAMES", "indian")
     with pytest.raises(ValueError, match="CODE=NAME"):
         Settings.from_env()
+
+
+def test_model_scale_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(_PREFIX + "MODEL_SCALE", "1.8")
+    assert Settings.from_env().model_scale == 1.8
+
+
+@pytest.mark.parametrize("scale", [0.0, -1.0])
+def test_settings_rejects_non_positive_model_scale(scale: float) -> None:
+    with pytest.raises(ValueError, match="model_scale"):
+        Settings(model_scale=scale)

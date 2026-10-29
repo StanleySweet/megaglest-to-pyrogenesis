@@ -96,26 +96,29 @@ def clear_model_cache() -> None:
     _parse_g3d.cache_clear()
 
 
-def read_g3d(path: Path) -> g3dlib.G3DModel:
+def read_g3d(path: Path, scale: float = 1.0) -> g3dlib.G3DModel:
     """Parse a G3D file (v3 or v4) into the shared ``G3DModel`` shape.
 
     v4 goes through the vendored importer with truncation tolerance (a short
     final mesh is clamped to EOF and flagged, never fatal). v3 is a separate,
     simpler format (see ``_vendor/g3d_format.md``).
 
-    Cached per ``(path, mtime, size)``, so a rewritten model is never served
-    stale. The returned model is shared between callers and must be treated as
+    ``scale`` multiplies every vertex position (``--model-scale``), so the
+    rig, animations and footprint all see the scaled model.
+
+    Cached per ``(path, mtime, size, scale)``, so a rewritten model is never
+    served stale. The returned model is shared between callers and must be treated as
     read-only.
     """
     try:
         stamp = path.stat()
     except OSError as exc:
         raise ConversionError(f"cannot read model {path}: {exc}") from exc
-    return _parse_g3d(str(path), stamp.st_mtime_ns, stamp.st_size)
+    return _parse_g3d(str(path), stamp.st_mtime_ns, stamp.st_size, scale)
 
 
 @lru_cache(maxsize=_MODEL_CACHE_SIZE)
-def _parse_g3d(path: str, mtime_ns: int, size: int) -> g3dlib.G3DModel:
+def _parse_g3d(path: str, mtime_ns: int, size: int, scale: float) -> g3dlib.G3DModel:
     """Uncached parse. ``mtime_ns`` and ``size`` are cache-key material only."""
     target = Path(path)
     try:
@@ -134,7 +137,11 @@ def _parse_g3d(path: str, mtime_ns: int, size: int) -> g3dlib.G3DModel:
         raise ConversionError(
             f"unsupported G3D version {version} in {target} (v3 and v4 only)"
         )
-    return _without_empty_meshes(model)
+    model = _without_empty_meshes(model)
+    if scale != 1.0:
+        for mesh in model.meshes:
+            mesh.vertices = [v * scale for v in mesh.vertices]
+    return model
 
 
 def _without_empty_meshes(model: g3dlib.G3DModel) -> g3dlib.G3DModel:
@@ -334,6 +341,7 @@ class MeshConverter:
         stem: str | None = None,
         rig: Rig | None = None,
         groups: list[list[int]] | None = None,
+        scale: float = 1.0,
     ) -> ConvertedMesh:
         """Convert ``g3d_path`` to DAEs under ``output_dir``.
 
@@ -344,7 +352,7 @@ class MeshConverter:
         output basename (callers use it to disambiguate same-named models
         from different source directories).
         """
-        model = read_g3d(g3d_path)
+        model = read_g3d(g3d_path, scale)
         output_dir.mkdir(parents=True, exist_ok=True)
         stem = _sanitize_id(stem or g3d_path.stem)
         base = f"mg_{stem}"
@@ -1040,7 +1048,7 @@ def _frame_positions(mesh: g3dlib.Mesh, frame: int) -> list[float]:
 def _model_footprint(model: g3dlib.G3DModel) -> tuple[float, float, float]:
     """(width, depth, height) of the frame-0 bounding box, in model units.
 
-    DAEs are exported Y-up with vertices verbatim, so the ground footprint is
+    DAEs are exported Y-up without swapping axes, so the ground footprint is
     the X extent (width) x Z extent (depth) and Y is the height. All meshes
     contribute; degenerate axes are floored at 0.5 (a zero-width footprint
     breaks the engine's placement code).

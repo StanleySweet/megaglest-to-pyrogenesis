@@ -157,6 +157,7 @@ class _MeshTask:
     group_textures: list[Path | None] | None
     bone_count: int
     root_name: str
+    model_scale: float
 
 
 @dataclass
@@ -190,7 +191,7 @@ def _convert_mesh_task(task: _MeshTask) -> _MeshTaskResult:
     """Worker: parse, rig, and write one model's DAEs."""
     result = _MeshTaskResult(mesh_stem=task.mesh_stem)
     try:
-        model = read_g3d(task.g3d_path)
+        model = read_g3d(task.g3d_path, task.model_scale)
         rig = None
         if task.bone_count > 0:
             rig = build_rig(model, task.groups, task.bone_count, task.root_name)
@@ -201,6 +202,7 @@ def _convert_mesh_task(task: _MeshTask) -> _MeshTaskResult:
             stem=task.mesh_stem,
             rig=rig,
             groups=None if rig is not None else task.groups,
+            scale=task.model_scale,
         )
         result.rig = rig
     except ConversionError as exc:
@@ -225,6 +227,7 @@ class _AnimTask:
     use_base_weights: bool
     unit_name: str
     anim_name: str
+    model_scale: float
     group_index: int = 0
 
 
@@ -244,8 +247,8 @@ def _convert_animation_task(task: _AnimTask) -> _AnimTaskResult:
     """
     result = _AnimTaskResult()
     try:
-        base_model = read_g3d(task.base_path)
-        anim_model = read_g3d(task.anim_path)
+        base_model = read_g3d(task.base_path, task.model_scale)
+        anim_model = read_g3d(task.anim_path, task.model_scale)
         MeshConverter().write_animation_dae(
             base_model,
             anim_model,
@@ -323,7 +326,7 @@ def convert_faction_media(
     model_cache: dict[Path, g3dlib.G3DModel] = {}
     for g3d_path in models:
         try:
-            model_cache[g3d_path] = read_g3d(g3d_path)
+            model_cache[g3d_path] = read_g3d(g3d_path, settings.model_scale)
         except ConversionError as exc:
             stats.warnings.append(f"{g3d_path.name}: {exc}")
     base_g3ds = _unit_base_models(faction, model_cache)
@@ -449,6 +452,7 @@ def convert_faction_media(
                 group_textures=group_textures,
                 bone_count=bone_count,
                 root_name=root_name,
+                model_scale=settings.model_scale,
             )
         )
         written_mesh_names |= _mesh_names(mesh_stem, n_outputs)
@@ -475,7 +479,9 @@ def convert_faction_media(
             rigs[g3d_path] = result.rig
             rig_stems[g3d_path] = result.mesh_stem
 
-    _convert_animations(faction, mod_dir, anim_dir, civ, model_cache, stats, rigs, rig_stems)
+    _convert_animations(
+        faction, mod_dir, anim_dir, civ, model_cache, stats, rigs, rig_stems, settings.model_scale
+    )
     write_skeletons(
         [(rig_stems[g3d], rigs[g3d]) for g3d in sorted(rigs)],
         skeletons_dir,
@@ -522,6 +528,7 @@ def _convert_animations(
     stats: MediaConversionStats,
     rigs: dict[Path, Rig],
     rig_stems: dict[Path, str],
+    model_scale: float,
 ) -> None:
     """One animation DAE per unit skill, per rigged base model, per group.
 
@@ -595,6 +602,7 @@ def _convert_animations(
                             use_base_weights=anim_model is base_model,
                             unit_name=unit.name,
                             anim_name=skill.animation.name,
+                            model_scale=model_scale,
                             group_index=gi,
                         )
                     )

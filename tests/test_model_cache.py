@@ -93,3 +93,14 @@ def test_the_cache_stays_within_its_size(tmp_path: Path) -> None:
     # The oldest entries must have been dropped, so reading them again re-parses.
     evicted = read_g3d(paths[0])
     assert evicted is not kept[0], f"cache exceeded its {limit}-entry bound"
+
+
+def test_scaled_read_multiplies_vertices_and_is_cached_apart(tmp_path: Path) -> None:
+    target = tmp_path / "unit.g3d"
+    shutil.copy(G3D_FIXTURES / "treant_idle.g3d", target)
+
+    plain = read_g3d(target)
+    scaled = read_g3d(target, 2.0)
+
+    assert scaled is not plain
+    assert scaled.meshes[0].vertices == [v * 2.0 for v in plain.meshes[0].vertices]

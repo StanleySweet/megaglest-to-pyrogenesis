@@ -144,6 +144,13 @@ def _parse_civ_names(
     f"(default: {Settings.rig_bones}).",
 )
 @click.option(
+    "--model-scale",
+    type=click.FloatRange(min=0, min_open=True),
+    default=None,
+    help="Multiply model sizes, with footprints and particles "
+    f"(default: {Settings.model_scale}).",
+)
+@click.option(
     "--civ-name",
     "civ_names",
     multiple=True,
@@ -163,13 +170,19 @@ def convert(
     factions: tuple[str, ...],
     skip_media: bool | None,
     rig_bones: int | None,
+    model_scale: float | None,
     civ_names: tuple[tuple[str, str], ...],
     log_level: str,
 ) -> None:
     """Convert a MegaGlest pack into a 0 A.D. mod."""
     configure_logging(log_level)
     # Flags default to None so only the ones given override MG2OAD_* settings.
-    flags = {"skip_media": skip_media, "rig_bones": rig_bones, "civ_names": civ_names or None}
+    flags = {
+        "skip_media": skip_media,
+        "rig_bones": rig_bones,
+        "model_scale": model_scale,
+        "civ_names": civ_names or None,
+    }
     try:
         env_settings = Settings.from_env()
     except ValueError as exc:

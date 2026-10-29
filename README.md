@@ -61,6 +61,7 @@ megaglest-to-pyrogenesis convert \
 | `--factions` | `all` | Faction to convert; repeat the flag per faction, or pass `all` |
 | `--skip-media`, `--no-skip-media` | off | Skip mesh, texture, and audio conversion, and generate game data only; `--no-skip-media` overrides `MG2OAD_SKIP_MEDIA` |
 | `--rig-bones` | `32` | Maximum joints, root included, of the synthesized rig per model (2-64) |
+| `--model-scale` | `1.0` | Multiply every model's size; footprints and particles follow. MegaGlest models come out at about half stock 0 A.D. size for units and a fifth for buildings; `1.8` makes units stock-sized |
 | `--civ-name` | none | Display name for a converted civ, as `CODE=NAME`, for example `indian="Native Americans"`. Repeat per civ. The civ code in file paths does not change |
 | `--log-level` | `INFO` | `DEBUG`, `INFO`, `WARNING`, or `ERROR` |
 

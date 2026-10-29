@@ -42,7 +42,6 @@ def generate_templates(
     settings: Settings,
 ) -> list[Path]:
     """Write one template per unit/building; returns the written XML paths."""
-    del settings  # parent chains are version-stable
     civ = sanitize_mod_name(faction.name)
     tc = town_centre_candidate(faction)
     written: list[Path] = []
@@ -54,7 +53,7 @@ def generate_templates(
             message = f"{name}: custom resources '{summary}' have no 0 A.D. analog; dropped"
             stats.warnings.append(message)
             LOGGER.warning("template: %s", message)
-        root = _build_template(faction, civ, unit, tc, stats)
+        root = _build_template(faction, civ, unit, tc, stats, settings.model_scale)
         sub = "structures" if unit.is_building else "units"
         path = mod_dir / "simulation/templates" / sub / civ / f"{sanitize_mod_name(name)}.xml"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -99,15 +98,20 @@ def _parent_for(unit: UnitDef, tc: UnitDef | None) -> str:
 
 
 def _build_template(
-    faction: Faction, civ: str, unit: UnitDef, tc: UnitDef | None, stats: MediaConversionStats
+    faction: Faction,
+    civ: str,
+    unit: UnitDef,
+    tc: UnitDef | None,
+    stats: MediaConversionStats,
+    scale: float,
 ) -> etree._Element:
     root = etree.Element("Entity", parent=_parent_for(unit, tc))
     if unit.is_building:
         _add_cost(root, unit, build_time=True)
-        _add_footprint(root, unit, stats)
+        _add_footprint(root, unit, stats, scale)
         _add_health(root, unit)
         _add_identity(root, civ, unit)
-        _add_obstruction(root, unit, stats)
+        _add_obstruction(root, unit, stats, scale)
         _add_population_bonus(root, unit)
         _add_researcher(root, civ, unit)
         _add_trainer(root, civ, unit)
@@ -186,8 +190,10 @@ def _add_population_bonus(root: etree._Element, unit: UnitDef) -> None:
     _insert_alphabetic(root, pop)
 
 
-def _add_footprint(root: etree._Element, unit: UnitDef, stats: MediaConversionStats) -> None:
-    width, depth, height = _placement_dims(unit, stats)
+def _add_footprint(
+    root: etree._Element, unit: UnitDef, stats: MediaConversionStats, scale: float
+) -> None:
+    width, depth, height = _placement_dims(unit, stats, scale)
     fp = etree.SubElement(root, "Footprint")
     etree.SubElement(fp, "Square", width=_fmt(width), depth=_fmt(depth))
     height_node = etree.SubElement(fp, "Height")
@@ -195,13 +201,14 @@ def _add_footprint(root: etree._Element, unit: UnitDef, stats: MediaConversionSt
 
 
 def _placement_dims(
-    unit: UnitDef, stats: MediaConversionStats
+    unit: UnitDef, stats: MediaConversionStats, scale: float
 ) -> tuple[float, float, float]:
     """(width, depth, height) metres for Footprint and Obstruction.
 
     Prefers the base model's measured bounding box (the G3D rest pose is in
     metres); falls back to the legacy ``size * TILE_METERS`` guess for units
-    whose model was never converted.
+    whose model was never converted, scaled by ``scale`` (``--model-scale``)
+    as the measured box already is.
     """
     base = _unit_models(unit, stats)[0]
     if base is not None:
@@ -209,8 +216,8 @@ def _placement_dims(
         if footprint is not None:
             return footprint
     size = float(unit.parameters.get("size", 4))
-    meters = max(4.0, size * TILE_METERS)
-    return meters, meters, float(unit.parameters.get("height", 2.0))
+    meters = max(4.0, size * TILE_METERS) * scale
+    return meters, meters, float(unit.parameters.get("height", 2.0)) * scale
 
 
 def _add_health(root: etree._Element, unit: UnitDef) -> None:
@@ -322,8 +329,10 @@ def _add_identity(root: etree._Element, civ: str, unit: UnitDef) -> None:
     etree.SubElement(identity, "Undeletable").text = "false"
 
 
-def _add_obstruction(root: etree._Element, unit: UnitDef, stats: MediaConversionStats) -> None:
-    width, depth, _height = _placement_dims(unit, stats)
+def _add_obstruction(
+    root: etree._Element, unit: UnitDef, stats: MediaConversionStats, scale: float
+) -> None:
+    width, depth, _height = _placement_dims(unit, stats, scale)
     obstruction = etree.SubElement(root, "Obstruction")
     # 0.28's Obstruction schema rejects a Static side under 1.5 m
     # (minInclusive in CCmpObstruction.cpp), and small props measure less.
